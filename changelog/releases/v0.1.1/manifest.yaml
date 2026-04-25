@@ -1,0 +1,9 @@
+created: 2026-04-25
+title: Fast mode discoverability
+intro: >-
+  This release makes pi-service-tier easier to find by mentioning fast mode in package
+  and repository metadata. Users searching for the /fast command or fast-tier controls
+  can now discover the extension more reliably.
+source:
+  mode: sync-stable-queue
+  previous_stable: v0.1.0
