@@ -1,7 +1,7 @@
 {
   "name": "pi-service-tier",
   "version": "0.1.0",
-  "description": "Provider service-tier controls for pi",
+  "description": "Fast mode and provider service-tier controls for pi",
   "type": "module",
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",
@@ -20,6 +20,8 @@
     "pi",
     "pi-extension",
     "service-tier",
+    "fast-mode",
+    "fast",
     "openai",
     "codex",
     "footer",
