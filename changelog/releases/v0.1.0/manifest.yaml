@@ -1,0 +1,8 @@
+created: 2026-04-25
+title: Provider service tier controls
+intro: >-
+  The pi-service-tier extension lets users configure provider service tiers for supported
+  pi models. Users can toggle fast mode, edit tiers interactively, and see the active
+  tier in pi-fancy-footer when installed.
+source:
+  mode: sync-stable-queue
