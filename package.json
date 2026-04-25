@@ -1,0 +1,48 @@
+{
+  "name": "pi-service-tier",
+  "version": "0.1.0",
+  "description": "Provider service-tier controls for pi",
+  "type": "module",
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "typebox": "*"
+  },
+  "files": [
+    "service-tier.ts",
+    "shared.ts",
+    "README.md",
+    "screenshot.png",
+    "LICENSE"
+  ],
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "service-tier",
+    "openai",
+    "codex",
+    "footer",
+    "statusline"
+  ],
+  "author": "Matthias Vallentin",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mavam/pi-service-tier.git"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "test": "node --test --experimental-strip-types *.test.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "pi": {
+    "extensions": [
+      "./service-tier.ts"
+    ]
+  }
+}

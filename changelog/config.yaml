@@ -1,0 +1,4 @@
+id: pi-service-tier
+name: Pi Service Tier
+description: A service-tier extension for pi.
+repository: mavam/pi-service-tier
