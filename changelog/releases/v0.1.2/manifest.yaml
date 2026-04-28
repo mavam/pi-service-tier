@@ -1,0 +1,9 @@
+created: 2026-04-28
+title: Current pi-fancy-footer widget API support
+intro: >-
+  This release restores compatibility with the current pi-fancy-footer widget API.
+  Users who install both extensions continue to see the active service tier in the
+  footer with the expected default placement.
+source:
+  mode: sync-stable-queue
+  previous_stable: v0.1.1
