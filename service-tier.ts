@@ -144,12 +144,10 @@ export default function (pi: ExtensionAPI) {
     id: SERVICE_TIER_WIDGET_ID,
     label: "Service tier",
     description: "Shows the configured provider service tier when active.",
-    defaults: {
-      row: 1,
-      position: 8,
-      align: "right",
-      fill: "none",
-    },
+    row: 1,
+    order: 8,
+    align: "right",
+    grow: false,
     icon: {
       nerd: "",
       emoji: "⚡",
@@ -157,7 +155,7 @@ export default function (pi: ExtensionAPI) {
       ascii: "!",
     },
     visible: () => currentServiceTier !== "",
-    renderText: () => currentServiceTier,
+    render: () => currentServiceTier || undefined,
   });
 
   pi.registerCommand("fast", {

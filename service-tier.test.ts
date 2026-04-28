@@ -607,8 +607,12 @@ test("fancy footer widget renders the active tier name without markup", async ()
     const widgets: Array<{
       id: string;
       styled?: boolean;
+      row?: number;
+      order?: number;
+      align?: string;
+      grow?: boolean;
       visible?: (ctx: unknown) => boolean;
-      renderText: (ctx: unknown) => string;
+      render: (ctx: unknown) => string | undefined;
     }> = [];
     emitExtensionEvent("pi-fancy-footer:discover-widgets", {
       registerWidget(widget: (typeof widgets)[number]) {
@@ -620,8 +624,12 @@ test("fancy footer widget renders the active tier name without markup", async ()
       (entry) => entry.id === "pi-service-tier.service-tier",
     );
     assert.equal(widget?.styled, undefined);
+    assert.equal(widget?.row, 1);
+    assert.equal(widget?.order, 8);
+    assert.equal(widget?.align, "right");
+    assert.equal(widget?.grow, false);
     assert.equal(widget?.visible?.({}), true);
-    assert.equal(widget?.renderText({}), "priority");
+    assert.equal(widget?.render({}), "priority");
   }));
 
 test("fancy footer widget is hidden when the current provider is off", async () =>
@@ -645,7 +653,7 @@ test("fancy footer widget is hidden when the current provider is off", async () 
     const widgets: Array<{
       id: string;
       visible?: (ctx: unknown) => boolean;
-      renderText: (ctx: unknown) => string;
+      render: (ctx: unknown) => string | undefined;
     }> = [];
     emitExtensionEvent("pi-fancy-footer:discover-widgets", {
       registerWidget(widget: (typeof widgets)[number]) {
@@ -657,5 +665,5 @@ test("fancy footer widget is hidden when the current provider is off", async () 
       (entry) => entry.id === "pi-service-tier.service-tier",
     );
     assert.equal(widget?.visible?.({}), false);
-    assert.equal(widget?.renderText({}), "");
+    assert.equal(widget?.render({}), undefined);
   }));

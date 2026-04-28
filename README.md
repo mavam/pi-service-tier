@@ -66,7 +66,9 @@ When [pi-fancy-footer](https://github.com/mavam/pi-fancy-footer) is installed,
 the widget appears only when the active model uses a supported provider/API pair
 and that provider has a configured tier.
 
-The widget id is `pi-service-tier.service-tier`.
+The widget id is `pi-service-tier.service-tier`. It uses the current
+`pi-fancy-footer` extension widget API, with row `1`, order `8`, right
+alignment, and no grow behavior by default.
 
 ## 📝 TODO
 
