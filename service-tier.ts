@@ -143,19 +143,14 @@ export default function (pi: ExtensionAPI) {
   contributeFancyFooterWidget(pi, {
     id: SERVICE_TIER_WIDGET_ID,
     label: "Service tier",
-    description: "Shows the configured provider service tier when active.",
+    description: "Shows a bolt when a provider service tier is active.",
     row: 1,
     order: 8,
     align: "right",
     grow: false,
-    icon: {
-      nerd: "",
-      emoji: "⚡",
-      unicode: "⚡",
-      ascii: "!",
-    },
+    icon: false,
     visible: () => currentServiceTier !== "",
-    render: () => currentServiceTier || undefined,
+    render: () => (currentServiceTier ? "⚡" : undefined),
   });
 
   pi.registerCommand("fast", {

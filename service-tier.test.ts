@@ -586,7 +586,7 @@ test("createServiceTierSections puts the current model first with provider-speci
   );
 });
 
-test("fancy footer widget renders the active tier name without markup", async () =>
+test("fancy footer widget renders only a bolt for an active tier", async () =>
   withAgentDir(async (dir) => {
     writeFileSync(
       join(dir, SERVICE_TIER_CONFIG_FILE),
@@ -606,6 +606,7 @@ test("fancy footer widget renders the active tier name without markup", async ()
 
     const widgets: Array<{
       id: string;
+      icon?: false;
       styled?: boolean;
       row?: number;
       order?: number;
@@ -624,12 +625,13 @@ test("fancy footer widget renders the active tier name without markup", async ()
       (entry) => entry.id === "pi-service-tier.service-tier",
     );
     assert.equal(widget?.styled, undefined);
+    assert.equal(widget?.icon, false);
     assert.equal(widget?.row, 1);
     assert.equal(widget?.order, 8);
     assert.equal(widget?.align, "right");
     assert.equal(widget?.grow, false);
     assert.equal(widget?.visible?.({}), true);
-    assert.equal(widget?.render({}), "priority");
+    assert.equal(widget?.render({}), "⚡");
   }));
 
 test("fancy footer widget is hidden when the current provider is off", async () =>
