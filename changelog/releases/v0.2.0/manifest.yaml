@@ -1,0 +1,8 @@
+created: 2026-07-15
+title: Compact service-tier footer indicator
+intro: >-
+  The footer now shows a compact active service-tier indicator, keeping the interface
+  concise while preserving tier visibility.
+source:
+  mode: sync-stable-queue
+  previous_stable: v0.1.3
