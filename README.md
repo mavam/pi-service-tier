@@ -59,9 +59,8 @@ extension.
 
 When [pi-fancy-footer](https://github.com/mavam/pi-fancy-footer) is installed,
 the widget appears only when the active model uses a supported provider/API pair
-and that provider has a configured tier.
-
-![pi-fancy-footer screenshot](screenshot.png)
+and that provider has a configured tier. It shows a single `⚡` without the tier
+name to keep the footer compact.
 
 The widget id is `pi-service-tier.service-tier`. It uses the current
 `pi-fancy-footer` extension widget API, with row `1`, order `8`, right
