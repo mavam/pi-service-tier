@@ -28,27 +28,9 @@ import {
 
 export const SERVICE_TIER_WIDGET_ID = "pi-service-tier.service-tier";
 
-const FANCY_FOOTER_DISCOVER_WIDGETS_EVENT =
-  "pi-fancy-footer:discover-widgets";
-const FANCY_FOOTER_REQUEST_WIDGET_REFRESH_EVENT =
-  "pi-fancy-footer:request-widget-refresh";
-
-function contributeFancyFooterWidget(
-  pi: ExtensionAPI,
-  widget: Record<string, unknown>,
-): void {
-  pi.events.on(FANCY_FOOTER_DISCOVER_WIDGETS_EVENT, (payload) => {
-    const request = payload as
-      | { registerWidget?: (widget: Record<string, unknown>) => void }
-      | undefined;
-    if (typeof request?.registerWidget !== "function") return;
-    request.registerWidget(widget);
-  });
-}
-
-function requestFancyFooterRefresh(pi: ExtensionAPI): void {
-  pi.events.emit(FANCY_FOOTER_REQUEST_WIDGET_REFRESH_EVENT, {});
-}
+const FANCY_FOOTER_PROTOCOL = 1;
+const FANCY_FOOTER_WIDGET_EVENT = "pi-fancy-footer:widget";
+const FANCY_FOOTER_READY_EVENT = "pi-fancy-footer:ready";
 
 function warnOnce(message: string, lastWarning: string): string {
   if (message !== lastWarning) console.warn(`pi-service-tier: ${message}`);
@@ -83,6 +65,45 @@ function createServiceTierSettingItems(
 export default function (pi: ExtensionAPI) {
   let currentServiceTier: ServiceTierName | "" = "";
   let lastConfigWarning = "";
+
+  const publishFancyFooterWidget = (): void => {
+    pi.events.emit(FANCY_FOOTER_WIDGET_EVENT, {
+      protocol: FANCY_FOOTER_PROTOCOL,
+      type: "upsert",
+      widget: {
+        id: SERVICE_TIER_WIDGET_ID,
+        label: "Service tier",
+        description: "Shows a bolt when a provider service tier is active.",
+        content: { type: "text", text: currentServiceTier ? "⚡" : "" },
+        icon: false,
+        layout: {
+          row: 1,
+          position: 8,
+          align: "right",
+          fill: "none",
+        },
+      },
+    });
+  };
+
+  const stopFancyFooterReady = pi.events.on(
+    FANCY_FOOTER_READY_EVENT,
+    (message) => {
+      if (
+        typeof message !== "object" ||
+        message === null ||
+        !("protocol" in message) ||
+        message.protocol !== FANCY_FOOTER_PROTOCOL
+      ) {
+        return;
+      }
+      publishFancyFooterWidget();
+    },
+  );
+
+  // Covers the case where the footer installed its listener first. The ready
+  // handler above covers the opposite load order.
+  publishFancyFooterWidget();
 
   const loadConfigOrDefault = (): ServiceTierConfigSnapshot => {
     try {
@@ -122,7 +143,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     currentServiceTier = nextServiceTier;
-    requestFancyFooterRefresh(pi);
+    publishFancyFooterWidget();
     return currentServiceTier;
   };
 
@@ -139,19 +160,6 @@ export default function (pi: ExtensionAPI) {
       return false;
     }
   };
-
-  contributeFancyFooterWidget(pi, {
-    id: SERVICE_TIER_WIDGET_ID,
-    label: "Service tier",
-    description: "Shows a bolt when a provider service tier is active.",
-    row: 1,
-    order: 8,
-    align: "right",
-    grow: false,
-    icon: false,
-    visible: () => currentServiceTier !== "",
-    render: () => (currentServiceTier ? "⚡" : undefined),
-  });
 
   pi.registerCommand("fast", {
     description: "Toggle fast service tier for the current model provider.",
@@ -257,8 +265,12 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async () => {
-    if (!currentServiceTier) return;
     currentServiceTier = "";
-    requestFancyFooterRefresh(pi);
+    stopFancyFooterReady();
+    pi.events.emit(FANCY_FOOTER_WIDGET_EVENT, {
+      protocol: FANCY_FOOTER_PROTOCOL,
+      type: "remove",
+      id: SERVICE_TIER_WIDGET_ID,
+    });
   });
 }

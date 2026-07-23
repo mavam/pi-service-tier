@@ -63,8 +63,10 @@ and that provider has a configured tier. It shows a single `⚡` without the tie
 name to keep the footer compact.
 
 The widget id is `pi-service-tier.service-tier`. It uses the current
-`pi-fancy-footer` extension widget API, with row `1`, order `8`, right
-alignment, and no grow behavior by default.
+`pi-fancy-footer` event protocol, with row `1`, position `8`, right alignment,
+and no fill behavior by default. The extension has no package dependency on the
+footer: it publishes a complete snapshot when its state changes and republishes
+when the footer announces that it is ready.
 
 ## 📝 TODO
 
