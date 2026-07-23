@@ -56,12 +56,14 @@ function setupExtension(): {
   commands: Map<string, RegisteredCommand>;
   emitExtensionEvent: (event: string, payload: unknown) => void;
   emitPiEvent: (event: string, payload: unknown, ctx: ExtensionContext) => Promise<unknown[]>;
+  extensionEvents: Array<{ event: string; payload: unknown }>;
   notifications: CapturedNotification[];
   context: (model: ExtensionContext["model"]) => ExtensionCommandContext;
 } {
   const commands = new Map<string, RegisteredCommand>();
   const handlers = new Map<string, ((event: unknown, ctx: ExtensionContext) => unknown)[]>();
   const eventHandlers = new Map<string, ((payload: unknown) => void)[]>();
+  const extensionEvents: Array<{ event: string; payload: unknown }> = [];
   const notifications: CapturedNotification[] = [];
 
   serviceTierExtension({
@@ -76,10 +78,16 @@ function setupExtension(): {
     events: {
       on(event, handler) {
         const entries = eventHandlers.get(event) ?? [];
-        entries.push(handler as (payload: unknown) => void);
+        const typedHandler = handler as (payload: unknown) => void;
+        entries.push(typedHandler);
         eventHandlers.set(event, entries);
+        return () => {
+          const index = entries.indexOf(typedHandler);
+          if (index >= 0) entries.splice(index, 1);
+        };
       },
       emit(event, payload) {
+        extensionEvents.push({ event, payload });
         for (const handler of eventHandlers.get(event) ?? []) handler(payload);
       },
     },
@@ -97,6 +105,7 @@ function setupExtension(): {
       }
       return results;
     },
+    extensionEvents,
     notifications,
     context(model) {
       return {
@@ -586,14 +595,14 @@ test("createServiceTierSections puts the current model first with provider-speci
   );
 });
 
-test("fancy footer widget renders only a bolt for an active tier", async () =>
+test("fancy footer receives a complete snapshot for an active tier", async () =>
   withAgentDir(async (dir) => {
     writeFileSync(
       join(dir, SERVICE_TIER_CONFIG_FILE),
       JSON.stringify({ anthropic: "priority" }),
     );
 
-    const { emitExtensionEvent, emitPiEvent, context } = setupExtension();
+    const { extensionEvents, emitPiEvent, context } = setupExtension();
     await emitPiEvent(
       "session_start",
       { type: "session_start" },
@@ -604,44 +613,36 @@ test("fancy footer widget renders only a bolt for an active tier", async () =>
       } as ExtensionContext["model"]),
     );
 
-    const widgets: Array<{
-      id: string;
-      icon?: false;
-      styled?: boolean;
-      row?: number;
-      order?: number;
-      align?: string;
-      grow?: boolean;
-      visible?: (ctx: unknown) => boolean;
-      render: (ctx: unknown) => string | undefined;
-    }> = [];
-    emitExtensionEvent("pi-fancy-footer:discover-widgets", {
-      registerWidget(widget: (typeof widgets)[number]) {
-        widgets.push(widget);
+    assert.deepEqual(extensionEvents.at(-1), {
+      event: "pi-fancy-footer:widget",
+      payload: {
+        protocol: 1,
+        type: "upsert",
+        widget: {
+          id: "pi-service-tier.service-tier",
+          label: "Service tier",
+          description: "Shows a bolt when a provider service tier is active.",
+          content: { type: "text", text: "⚡" },
+          icon: false,
+          layout: {
+            row: 1,
+            position: 8,
+            align: "right",
+            fill: "none",
+          },
+        },
       },
     });
-
-    const widget = widgets.find(
-      (entry) => entry.id === "pi-service-tier.service-tier",
-    );
-    assert.equal(widget?.styled, undefined);
-    assert.equal(widget?.icon, false);
-    assert.equal(widget?.row, 1);
-    assert.equal(widget?.order, 8);
-    assert.equal(widget?.align, "right");
-    assert.equal(widget?.grow, false);
-    assert.equal(widget?.visible?.({}), true);
-    assert.equal(widget?.render({}), "⚡");
   }));
 
-test("fancy footer widget is hidden when the current provider is off", async () =>
+test("fancy footer keeps an inactive widget configurable with empty text", async () =>
   withAgentDir(async (dir) => {
     writeFileSync(
       join(dir, SERVICE_TIER_CONFIG_FILE),
       JSON.stringify({}),
     );
 
-    const { emitExtensionEvent, emitPiEvent, context } = setupExtension();
+    const { extensionEvents, emitPiEvent, context } = setupExtension();
     await emitPiEvent(
       "session_start",
       { type: "session_start" },
@@ -652,20 +653,44 @@ test("fancy footer widget is hidden when the current provider is off", async () 
       } as ExtensionContext["model"]),
     );
 
-    const widgets: Array<{
-      id: string;
-      visible?: (ctx: unknown) => boolean;
-      render: (ctx: unknown) => string | undefined;
-    }> = [];
-    emitExtensionEvent("pi-fancy-footer:discover-widgets", {
-      registerWidget(widget: (typeof widgets)[number]) {
-        widgets.push(widget);
+    const message = extensionEvents.at(-1) as {
+      event: string;
+      payload: { widget: { content: { text: string } } };
+    };
+    assert.equal(message.event, "pi-fancy-footer:widget");
+    assert.equal(message.payload.widget.content.text, "");
+  }));
+
+test("fancy footer snapshots republish on ready and are removed on shutdown", async () =>
+  withAgentDir(async () => {
+    const {
+      emitExtensionEvent,
+      emitPiEvent,
+      extensionEvents,
+      context,
+    } = setupExtension();
+    const initialCount = extensionEvents.length;
+
+    emitExtensionEvent("pi-fancy-footer:ready", {
+      protocol: 2,
+      version: "2.0.0",
+    });
+    assert.equal(extensionEvents.length, initialCount);
+
+    emitExtensionEvent("pi-fancy-footer:ready", {
+      protocol: 1,
+      version: "2.0.0",
+    });
+    assert.equal(extensionEvents.length, initialCount + 1);
+    assert.equal(extensionEvents.at(-1)?.event, "pi-fancy-footer:widget");
+
+    await emitPiEvent("session_shutdown", {}, context(undefined));
+    assert.deepEqual(extensionEvents.at(-1), {
+      event: "pi-fancy-footer:widget",
+      payload: {
+        protocol: 1,
+        type: "remove",
+        id: "pi-service-tier.service-tier",
       },
     });
-
-    const widget = widgets.find(
-      (entry) => entry.id === "pi-service-tier.service-tier",
-    );
-    assert.equal(widget?.visible?.({}), false);
-    assert.equal(widget?.render({}), undefined);
   }));
