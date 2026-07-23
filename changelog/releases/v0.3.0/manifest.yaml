@@ -1,0 +1,9 @@
+created: 2026-07-23
+title: Dependency-free footer integration
+intro: >-
+  Pi Service Tier now publishes its footer indicator directly over Pi's event bus
+  without depending on the footer package. The indicator remains reliable regardless
+  of extension load order.
+source:
+  mode: sync-stable-queue
+  previous_stable: v0.2.0
