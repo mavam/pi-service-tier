@@ -1,5 +1,28 @@
-# Agent instructions
+# pi-service-tier
 
-Keep `README.md` in sync with the code.
+`pi-service-tier` is a pi extension for toggling fast mode and configuring
+provider service tiers.
 
-Use `tenzir-ship` to manage `changelog/`.
+## Setup
+
+Install Lefthook once per clone:
+
+```bash
+uvx lefthook install
+```
+
+Pushing runs the quality gates automatically. You don't need to run checks
+manually.
+
+## Development
+
+When you change user-facing behavior, configuration, defaults, or dependencies,
+update `README.md` in the same change.
+
+## Release engineering
+
+- Use `tenzir-ship` for changelog management and releasing.
+- Add changelog entries for user-facing changes.
+- Before releasing, ensure `main` is in sync with `origin/main`.
+- To release, dispatch `.github/workflows/release.yaml` with a title and
+  introduction.
