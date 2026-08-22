@@ -1,7 +1,7 @@
 # ⚡ pi-service-tier
 
-A [pi](https://github.com/earendil-works/pi-mono/tree/main/packages/coding-agent)
-extension that toggles fast mode and applies provider service tiers.
+A [Pi](https://pi.dev) extension that toggles fast mode and applies provider
+service tiers.
 
 ## 🚀 Installation
 
@@ -75,12 +75,6 @@ when the footer announces that it is ready.
   calculation reads the requested tier from provider options. Until pi exposes a
   first-class extension path for that option, displayed usage costs can omit
   flex or priority multipliers.
-
-## 🧹 Uninstall
-
-```sh
-pi remove npm:pi-service-tier
-```
 
 ## 📄 License
 
