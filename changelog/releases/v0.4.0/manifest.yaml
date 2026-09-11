@@ -1,0 +1,9 @@
+created: 2026-09-11
+title: Session-local fast mode
+intro: >-
+  Fast mode is now scoped to the current pi session, so you can speed up one session
+  without changing other sessions. Global service-tier defaults remain available through
+  /service-tier.
+source:
+  mode: sync-stable-queue
+  previous_stable: v0.3.0
