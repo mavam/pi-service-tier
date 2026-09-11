@@ -19,6 +19,7 @@ import {
   setProviderServiceTier,
   toggleFastServiceTier,
   type ServiceTierSelection,
+  type ServiceTierSettings,
   type ServiceTierConfigSnapshot,
   type ServiceTierName,
 } from "./domain.ts";
@@ -28,6 +29,13 @@ import {
   writeServiceTierConfigSnapshot,
 } from "./config.ts";
 import { createServiceTierSections } from "./settings.ts";
+import {
+  SERVICE_TIER_SESSION_ENTRY,
+  mergeServiceTierSettings,
+  restoreServiceTierOverrides,
+  type ServiceTierSessionState,
+  type SessionServiceTierOverrides,
+} from "./session-state.ts";
 
 export const SERVICE_TIER_WIDGET_ID = "pi-service-tier.service-tier";
 
@@ -68,6 +76,7 @@ function createServiceTierSettingItems(
 export default function (pi: ExtensionAPI) {
   let currentServiceTier: ServiceTierSelection = "";
   let lastConfigWarning = "";
+  let sessionOverrides: SessionServiceTierOverrides = {};
 
   const publishFancyFooterWidget = (): void => {
     pi.events.emit(FANCY_FOOTER_WIDGET_EVENT, {
@@ -135,9 +144,13 @@ export default function (pi: ExtensionAPI) {
     }
   };
 
+  const effectiveSettings = (
+    defaults = loadConfigOrDefault(),
+  ): ServiceTierSettings => mergeServiceTierSettings(defaults, sessionOverrides);
+
   const refreshServiceTier = (
     ctx: ExtensionContext,
-    config = loadConfigOrDefault(),
+    config = effectiveSettings(),
     forceRefresh = false,
   ): ServiceTierSelection => {
     const nextServiceTier = resolveEffectiveServiceTier(config, ctx.model);
@@ -156,7 +169,7 @@ export default function (pi: ExtensionAPI) {
   ): boolean => {
     try {
       writeServiceTierConfigSnapshot(config);
-      refreshServiceTier(ctx, config, true);
+      refreshServiceTier(ctx, effectiveSettings(config), true);
       return true;
     } catch (error) {
       notifyConfigWriteError(ctx, error);
@@ -165,12 +178,12 @@ export default function (pi: ExtensionAPI) {
   };
 
   pi.registerCommand("fast", {
-    description: "Toggle fast service tier for the current model provider.",
+    description: "Toggle fast service tier for the current provider in this session.",
     handler: async (_args, ctx) => {
       const config = loadConfigForCommand(ctx);
       if (!config) return;
 
-      const result = toggleFastServiceTier(config, ctx.model);
+      const result = toggleFastServiceTier(effectiveSettings(config), ctx.model);
       if (!result) {
         ctx.ui.notify(
           `Service tier is not supported for ${formatModel(ctx.model)}.`,
@@ -179,24 +192,31 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      const nextConfig = setProviderServiceTier(
-        config,
-        result.provider,
-        result.serviceTier,
-      );
-      if (!writeAndRefresh(ctx, nextConfig)) return;
+      const state: ServiceTierSessionState = {
+        version: 1,
+        overrides: { ...sessionOverrides, [result.provider]: result.serviceTier },
+      };
+      try {
+        pi.appendEntry(SERVICE_TIER_SESSION_ENTRY, state);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.ui.notify(`Failed to save session service tier: ${message}`, "error");
+        return;
+      }
+      sessionOverrides = state.overrides;
+      refreshServiceTier(ctx, effectiveSettings(config), true);
 
       const providerLabel =
         SERVICE_TIER_PROVIDER_DEFINITIONS[result.provider].label;
       ctx.ui.notify(
-        `${providerLabel} service tier: ${result.serviceTier || "off"}`,
+        `${providerLabel} service tier for this session: ${result.serviceTier || "off"}`,
         "info",
       );
     },
   });
 
   pi.registerCommand("service-tier", {
-    description: "Configure provider service tiers.",
+    description: "Configure global provider service tier defaults.",
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("/service-tier requires interactive UI mode", "warning");
@@ -212,9 +232,9 @@ export default function (pi: ExtensionAPI) {
         const container = new Container();
         container.addChild(
           new Text(
-            `${theme.fg("accent", theme.bold("Service Tier"))}\n${theme.fg(
+            `${theme.fg("accent", theme.bold("Global service tier defaults"))}\n${theme.fg(
               "dim",
-              getServiceTierConfigPath(),
+              `${getServiceTierConfigPath()}\nSession /fast overrides take precedence.`,
             )}`,
             0,
             0,
@@ -259,7 +279,13 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_start", async (_event, ctx) => {
-    refreshServiceTier(ctx);
+    sessionOverrides = restoreServiceTierOverrides(ctx.sessionManager.getBranch());
+    refreshServiceTier(ctx, effectiveSettings(), true);
+  });
+
+  pi.on("session_tree", async (_event, ctx) => {
+    sessionOverrides = restoreServiceTierOverrides(ctx.sessionManager.getBranch());
+    refreshServiceTier(ctx, effectiveSettings(), true);
   });
 
   pi.on("model_select", async (_event, ctx) => {
@@ -267,7 +293,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("before_provider_request", async (event, ctx) => {
-    const config = loadConfigOrDefault();
+    const config = effectiveSettings();
     refreshServiceTier(ctx, config);
     return applyServiceTierToPayload(event.payload, config, ctx.model);
   });
