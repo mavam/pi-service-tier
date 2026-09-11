@@ -14,17 +14,20 @@ import {
   DEFAULT_SERVICE_TIER_CONFIG,
   SERVICE_TIER_PROVIDER_DEFINITIONS,
   applyServiceTierToPayload,
-  createServiceTierSections,
-  getServiceTierConfigPath,
   isServiceTierProvider,
-  loadServiceTierConfig,
   resolveEffectiveServiceTier,
   setProviderServiceTier,
   toggleFastServiceTier,
-  writeServiceTierConfigSnapshot,
-  type ServiceTierName,
+  type ServiceTierSelection,
   type ServiceTierConfigSnapshot,
-} from "./shared.ts";
+  type ServiceTierName,
+} from "./domain.ts";
+import {
+  getServiceTierConfigPath,
+  loadServiceTierConfig,
+  writeServiceTierConfigSnapshot,
+} from "./config.ts";
+import { createServiceTierSections } from "./settings.ts";
 
 export const SERVICE_TIER_WIDGET_ID = "pi-service-tier.service-tier";
 
@@ -63,7 +66,7 @@ function createServiceTierSettingItems(
 }
 
 export default function (pi: ExtensionAPI) {
-  let currentServiceTier: ServiceTierName | "" = "";
+  let currentServiceTier: ServiceTierSelection = "";
   let lastConfigWarning = "";
 
   const publishFancyFooterWidget = (): void => {
@@ -136,7 +139,7 @@ export default function (pi: ExtensionAPI) {
     ctx: ExtensionContext,
     config = loadConfigOrDefault(),
     forceRefresh = false,
-  ): ServiceTierName | "" => {
+  ): ServiceTierSelection => {
     const nextServiceTier = resolveEffectiveServiceTier(config, ctx.model);
     if (currentServiceTier === nextServiceTier && !forceRefresh) {
       return currentServiceTier;
@@ -176,7 +179,12 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      if (!writeAndRefresh(ctx, result.config)) return;
+      const nextConfig = setProviderServiceTier(
+        config,
+        result.provider,
+        result.serviceTier,
+      );
+      if (!writeAndRefresh(ctx, nextConfig)) return;
 
       const providerLabel =
         SERVICE_TIER_PROVIDER_DEFINITIONS[result.provider].label;

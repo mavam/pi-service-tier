@@ -11,6 +11,9 @@
   "files": [
     "service-tier.ts",
     "shared.ts",
+    "domain.ts",
+    "config.ts",
+    "settings.ts",
     "README.md",
     "screenshot.png",
     "LICENSE"

@@ -385,7 +385,6 @@ test("toggleFastServiceTier maps providers to fast and off", () => {
   assert.deepEqual(
     toggleFastServiceTier({}, { provider: "openai", api: "openai-responses" }),
     {
-      config: { openai: "priority" },
       provider: "openai",
       serviceTier: "priority",
       fast: true,
@@ -397,7 +396,6 @@ test("toggleFastServiceTier maps providers to fast and off", () => {
       { provider: "openai", api: "openai-responses" },
     ),
     {
-      config: {},
       provider: "openai",
       serviceTier: "",
       fast: false,
@@ -409,7 +407,6 @@ test("toggleFastServiceTier maps providers to fast and off", () => {
       { provider: "anthropic", api: "anthropic-messages" },
     ),
     {
-      config: { anthropic: "priority" },
       provider: "anthropic",
       serviceTier: "priority",
       fast: true,
@@ -421,7 +418,6 @@ test("toggleFastServiceTier maps providers to fast and off", () => {
       { provider: "google", api: "google-generative-ai" },
     ),
     {
-      config: { google: "priority" },
       provider: "google",
       serviceTier: "priority",
       fast: true,
