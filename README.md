@@ -44,6 +44,24 @@ selected point, and `/fork` or `/clone` inherits the choices on the copied branc
 Later toggles in a fork do not affect its parent. `/new` starts without overrides
 and uses your global defaults.
 
+### Child agents
+
+With a version of [pi-agents](https://github.com/mavam/pi-agents) that supports
+[agent extension hooks](https://github.com/mavam/pi-agents/blob/main/docs/hooks.md),
+new agents capture your effective service-tier settings, including session
+`/fast` overrides. Each child applies the settings for its own provider, even
+when it uses a different model from the parent.
+
+For example, enable `/fast`, then ask Pi to spawn an agent. That agent keeps
+its captured settings if you toggle `/fast` again. Graph nodes capture when
+the graph is created; helpers inherit their creating agent\u0027s settings.
+Follow-ups, child compaction, and resumed work retain the snapshot.
+
+This integration is optional and adds no package dependency. Agents created
+before hook support have no snapshot. If pi-service-tier is removed, stored
+snapshots remain but stop affecting requests; loading it again applies them.
+Parent compaction and usage-cost limitations are unchanged.
+
 ## ⚙️ Configuration
 
 Run `/service-tier` or create `~/.pi/agent/service-tier.json` to set global defaults:

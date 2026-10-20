@@ -10,6 +10,7 @@
   },
   "files": [
     "service-tier.ts",
+    "agent-hooks.ts",
     "shared.ts",
     "domain.ts",
     "config.ts",

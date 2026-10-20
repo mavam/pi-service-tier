@@ -37,6 +37,8 @@ import {
   type SessionServiceTierOverrides,
 } from "./session-state.ts";
 
+import { registerAgentHooks } from "./agent-hooks.ts";
+
 export const SERVICE_TIER_WIDGET_ID = "pi-service-tier.service-tier";
 
 const FANCY_FOOTER_PROTOCOL = 1;
@@ -128,6 +130,9 @@ export default function (pi: ExtensionAPI) {
       return { ...DEFAULT_SERVICE_TIER_CONFIG };
     }
   };
+
+  // Register during loading, before either extension starts its session.
+  const stopAgentHooks = registerAgentHooks(pi.events, loadConfigOrDefault);
 
   const loadConfigForCommand = (
     ctx: ExtensionCommandContext,
@@ -301,6 +306,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", async () => {
     currentServiceTier = "";
     stopFancyFooterReady();
+    stopAgentHooks();
     pi.events.emit(FANCY_FOOTER_WIDGET_EVENT, {
       protocol: FANCY_FOOTER_PROTOCOL,
       type: "remove",

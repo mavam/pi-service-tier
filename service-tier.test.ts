@@ -20,6 +20,7 @@ import type {
 import { initTheme, SessionManager, type KeybindingsManager, type Theme } from "@earendil-works/pi-coding-agent";
 import type { TUI } from "@earendil-works/pi-tui";
 import serviceTierExtension from "./service-tier.ts";
+import type { createAgentHooks } from "./agent-hooks.ts";
 import { SERVICE_TIER_SESSION_ENTRY } from "./session-state.ts";
 import {
   DEFAULT_SERVICE_TIER_CONFIG,
@@ -753,6 +754,25 @@ test("unsupported models and invalid global configuration do not persist overrid
     assert.equal(harness.notifications.at(-1)?.type, "error");
     assert.deepEqual(harness.sessionManager.getEntries(), []);
     assert.equal(readFileSync(configPath, "utf8"), '{"serviceTier":"priority"}');
+  }));
+
+test("child hooks capture restored overrides before session_start", async () =>
+  withAgentDir(async () => {
+    writeServiceTierConfigSnapshot({ "openai-codex": "priority", anthropic: "priority" });
+    const parent = SessionManager.inMemory();
+    parent.appendCustomEntry(SERVICE_TIER_SESSION_ENTRY, {
+      version: 1, overrides: { "openai-codex": "" },
+    });
+    const harness = setupExtension(parent);
+    let hooks: ReturnType<typeof createAgentHooks> | undefined;
+    harness.emitExtensionEvent("pi-agents:hooks:discover", {
+      protocol: 1,
+      register(value: ReturnType<typeof createAgentHooks>) { hooks = value; },
+    });
+    assert.ok(hooks);
+    const state = hooks.onAgentCreate({ parent: { branch: parent.getBranch() } });
+    assert.equal(hooks.onAgentRequest({ state, model: codexModel! }, {}), undefined);
+    assert.deepEqual(hooks.onAgentRequest({ state, model: anthropicModel! }, {}), { service_tier: "auto" });
   }));
 
 test("failed session persistence does not activate fast mode", async () =>
