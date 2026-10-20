@@ -3,7 +3,9 @@ title: Service-tier inheritance for child agents
 type: feature
 authors:
   - mavam
-created: 2026-10-20T16:08:46.170361Z
+prs:
+  - 4
+created: 2026-10-20T16:11:07.433752Z
 ---
 
 New child agents can inherit your service-tier settings when a compatible pi-agents version is installed. Enable `/fast`, then ask Pi to spawn an agent: it captures your current provider-specific defaults and session overrides, even if it uses a different provider from the parent.
