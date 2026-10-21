@@ -31,12 +31,22 @@ test("agent snapshots use the supplied branch and stay fixed across changes", ()
   assert.equal(resumed.onAgentRequest({ state, model: { provider: "other", api: "anthropic-messages" } }, {}), undefined);
 });
 
-test("undefined state passes through; invalid stored state fails explicitly", () => {
+test("undefined state passes through; unknown versions and malformed state fail", () => {
   const hooks = createAgentHooks(() => ({}));
   assert.equal(hooks.onAgentRequest({ state: undefined, model: codex }, {}), undefined);
-  for (const state of [{ version: 2, settings: {} }, { version: 1, settings: { unknown: "" } }, { version: 1, settings: { anthropic: "flex" } }]) {
+  for (const state of [{ version: 2, settings: {} }, { version: 1 }, { version: 1, settings: { anthropic: 1 } }]) {
     assert.throws(() => hooks.onAgentRequest({ state, model: codex }, {}));
   }
+});
+
+test("version 1 snapshots from newer versions apply what this version knows", () => {
+  const hooks = createAgentHooks(() => ({}));
+  const state = {
+    version: 1,
+    settings: { "future-provider": "turbo", anthropic: "turbo", "openai-codex": "priority" },
+  };
+  assert.deepEqual(hooks.onAgentRequest({ state, model: codex }, {}), { service_tier: "priority" });
+  assert.equal(hooks.onAgentRequest({ state, model: anthropic }, {}), undefined);
 });
 
 test("optional discovery is synchronous and independent of session_start", () => {

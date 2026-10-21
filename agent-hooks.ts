@@ -1,11 +1,13 @@
 import type { ExtensionAPI, SessionEntry } from "@earendil-works/pi-coding-agent";
-import { parseServiceTierConfigValue } from "./config.ts";
 import {
   applyServiceTierToPayload,
   isRecord,
+  isServiceTierName,
   isServiceTierProvider,
   type ServiceTierConfigSnapshot,
   type ServiceTierModel,
+  type ServiceTierProvider,
+  type ServiceTierSelection,
   type ServiceTierSettings,
 } from "./domain.ts";
 import {
@@ -36,22 +38,27 @@ export function createAgentHooks(loadDefaults: () => ServiceTierConfigSnapshot) 
   };
 }
 
-/** Stored settings are authoritative; never merge today's defaults on resume. */
+/**
+ * Stored settings are authoritative; never merge today's defaults on resume.
+ * Snapshots never change, so read every version 1 snapshot, also one a newer
+ * version wrote: providers and tiers this version doesn't know apply nothing.
+ */
 function readSettings(state: unknown): ServiceTierSettings {
   if (!isRecord(state) || state.version !== 1 || !isRecord(state.settings)) {
     throw new Error("Unsupported or invalid pi-service-tier agent state");
   }
-  const entries = Object.entries(state.settings);
-  if (entries.some(([key]) => !isServiceTierProvider(key))) {
-    throw new Error("Unknown provider in pi-service-tier agent state");
+  const settings: Partial<Record<ServiceTierProvider, ServiceTierSelection>> = {};
+  for (const [provider, value] of Object.entries(state.settings)) {
+    if (typeof value !== "string") {
+      throw new Error("Invalid service tier in pi-service-tier agent state");
+    }
+    if (!isServiceTierProvider(provider)) continue;
+    // An empty value explicitly disables injection and must survive too.
+    if (value === "" || isServiceTierName(provider, value)) {
+      settings[provider] = value;
+    }
   }
-  // The global schema validates non-empty values. Empty values explicitly
-  // disable injection and must survive the snapshot too.
-  parseServiceTierConfigValue(
-    "pi-service-tier agent state",
-    Object.fromEntries(entries.filter(([, value]) => value !== "")),
-  );
-  return state.settings as ServiceTierSettings;
+  return settings;
 }
 
 export function registerAgentHooks(

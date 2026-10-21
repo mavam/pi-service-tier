@@ -54,13 +54,14 @@ when it uses a different model from the parent.
 
 For example, enable `/fast`, then ask Pi to spawn an agent. That agent keeps
 its captured settings if you toggle `/fast` again. Graph nodes capture when
-the graph is created; helpers inherit their creating agent\u0027s settings.
+the graph is created; helpers inherit their creating agent's settings.
 Follow-ups, child compaction, and resumed work retain the snapshot.
 
 This integration is optional and adds no package dependency. Agents created
-before hook support have no snapshot. If pi-service-tier is removed, stored
-snapshots remain but stop affecting requests; loading it again applies them.
-Parent compaction and usage-cost limitations are unchanged.
+before hook support have no snapshot. A snapshot from a newer version applies
+the providers and tiers this version supports. If pi-service-tier is removed,
+stored snapshots remain but stop affecting requests; loading it again applies
+them. Parent compaction and usage-cost limitations are unchanged.
 
 ## ⚙️ Configuration
 

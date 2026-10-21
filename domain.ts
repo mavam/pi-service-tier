@@ -95,6 +95,15 @@ export function isServiceTierProvider(
   );
 }
 
+export function isServiceTierName(
+  provider: ServiceTierProvider,
+  value: unknown,
+): value is ServiceTierName {
+  return SERVICE_TIER_PROVIDER_DEFINITIONS[provider].tiers.some(
+    (tier) => tier.name === value,
+  );
+}
+
 export function modelSupportsServiceTier(
   model: ServiceTierModel | undefined,
 ): boolean {
