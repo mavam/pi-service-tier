@@ -51,7 +51,7 @@ test("version 1 snapshots from newer versions apply what this version knows", ()
 
 test("optional discovery is synchronous and independent of session_start", () => {
   const events = createEventBus();
-  const stop = registerAgentHooks(events, () => ({ "openai-codex": "priority" }));
+  registerAgentHooks(events, () => ({ "openai-codex": "priority" }));
   const discovered: ReturnType<typeof createAgentHooks>[] = [];
   const register = (hooks: ReturnType<typeof createAgentHooks>) => discovered.push(hooks);
   events.emit("pi-agents:hooks:discover", { protocol: 2, register });
@@ -62,7 +62,4 @@ test("optional discovery is synchronous and independent of session_start", () =>
   const hooks = discovered[0];
   const state = hooks.onAgentCreate({ parent: { branch: [] } });
   assert.deepEqual(hooks.onAgentRequest({ state, model: codex }, {}), { service_tier: "priority" });
-  stop();
-  events.emit("pi-agents:hooks:discover", { protocol: 1, register });
-  assert.equal(discovered.length, 1);
 });

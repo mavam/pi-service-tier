@@ -64,9 +64,9 @@ function readSettings(state: unknown): ServiceTierSettings {
 export function registerAgentHooks(
   events: ExtensionAPI["events"],
   loadDefaults: () => ServiceTierConfigSnapshot,
-): () => void {
+): void {
   const hooks = createAgentHooks(loadDefaults);
-  return events.on("pi-agents:hooks:discover", (request) => {
+  events.on("pi-agents:hooks:discover", (request) => {
     if (!isRecord(request) || request.protocol !== 1 || typeof request.register !== "function") {
       return;
     }

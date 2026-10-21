@@ -132,7 +132,7 @@ export default function (pi: ExtensionAPI) {
   };
 
   // Register during loading, before either extension starts its session.
-  const stopAgentHooks = registerAgentHooks(pi.events, loadConfigOrDefault);
+  registerAgentHooks(pi.events, loadConfigOrDefault);
 
   const loadConfigForCommand = (
     ctx: ExtensionCommandContext,
@@ -306,8 +306,6 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", async () => {
     currentServiceTier = "";
     stopFancyFooterReady();
-    // Pi 1.3 and later also drop the listener on reload; older Pi doesn't.
-    stopAgentHooks();
     pi.events.emit(FANCY_FOOTER_WIDGET_EVENT, {
       protocol: FANCY_FOOTER_PROTOCOL,
       type: "remove",

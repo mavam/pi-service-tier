@@ -24,17 +24,19 @@ import type { createAgentHooks } from "./agent-hooks.ts";
 import { SERVICE_TIER_SESSION_ENTRY } from "./session-state.ts";
 import {
   DEFAULT_SERVICE_TIER_CONFIG,
-  SERVICE_TIER_CONFIG_FILE,
   applyServiceTierToPayload,
-  createServiceTierSections,
-  getServiceTierConfigPath,
-  loadServiceTierConfig,
   modelSupportsServiceTier,
-  parseServiceTierConfigValue,
   resolveEffectiveServiceTier,
   toggleFastServiceTier,
+} from "./domain.ts";
+import {
+  SERVICE_TIER_CONFIG_FILE,
+  getServiceTierConfigPath,
+  loadServiceTierConfig,
+  parseServiceTierConfigValue,
   writeServiceTierConfigSnapshot,
-} from "./shared.ts";
+} from "./config.ts";
+import { createServiceTierSections } from "./settings.ts";
 
 interface CapturedNotification {
   message: string;

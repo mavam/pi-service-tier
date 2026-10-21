@@ -46,8 +46,8 @@ and uses your global defaults.
 
 ### Child agents
 
-With a version of [pi-agents](https://github.com/mavam/pi-agents) that supports
-[agent extension hooks](https://github.com/mavam/pi-agents/blob/main/docs/hooks.md),
+With [pi-agents](https://github.com/mavam/pi-agents) 0.36.0 or later, which
+provides [agent extension hooks](https://github.com/mavam/pi-agents/blob/main/docs/hooks.md),
 new agents capture your effective service-tier settings, including session
 `/fast` overrides. Each child applies the settings for its own provider, even
 when it uses a different model from the parent.
@@ -57,11 +57,10 @@ its captured settings if you toggle `/fast` again. Graph nodes capture when
 the graph is created; helpers inherit their creating agent's settings.
 Follow-ups, child compaction, and resumed work retain the snapshot.
 
-This integration is optional and adds no package dependency. Agents created
-before hook support have no snapshot. A snapshot from a newer version applies
-the providers and tiers this version supports. If pi-service-tier is removed,
-stored snapshots remain but stop affecting requests; loading it again applies
-them. Parent compaction and usage-cost limitations are unchanged.
+This integration is optional and adds no package dependency. A snapshot from a
+newer version of pi-service-tier applies the providers and tiers this version
+supports. If pi-service-tier is removed, stored snapshots remain but stop
+affecting requests; loading it again applies them. Parent compaction and usage-cost limitations are unchanged.
 
 ## ⚙️ Configuration
 
@@ -89,8 +88,6 @@ Run `/service-tier` or create `~/.pi/agent/service-tier.json` to set global defa
 
 To turn a provider off by default, omit its key. Only the values listed above are
 accepted. Providers without a session override continue to pick up global changes.
-Existing global settings, including those saved by earlier versions of `/fast`,
-remain in effect. Use `/service-tier` to change them.
 Batch APIs are separate asynchronous APIs and are not configured by this
 extension.
 
