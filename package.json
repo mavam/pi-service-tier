@@ -4,13 +4,13 @@
   "description": "Fast mode and provider service-tier controls for pi",
   "type": "module",
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*",
+    "@earendil-works/pi-coding-agent": "^1.3.0",
+    "@earendil-works/pi-tui": "^1.3.0",
     "typebox": "*"
   },
   "files": [
     "service-tier.ts",
-    "shared.ts",
+    "agent-hooks.ts",
     "domain.ts",
     "config.ts",
     "settings.ts",
