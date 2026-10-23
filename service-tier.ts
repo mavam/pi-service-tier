@@ -17,7 +17,7 @@ import {
   isServiceTierProvider,
   resolveEffectiveServiceTier,
   setProviderServiceTier,
-  toggleFastServiceTier,
+  toggleServiceTierSpeed,
   type ServiceTierSelection,
   type ServiceTierSettings,
   type ServiceTierConfigSnapshot,
@@ -55,6 +55,11 @@ function formatModel(model: ExtensionContext["model"]): string {
   return `${model.provider}/${model.id}`;
 }
 
+function formatServiceTier(serviceTier: ServiceTierSelection): string {
+  if (!serviceTier) return "";
+  return serviceTier === "ultrafast" ? "⚡⚡" : "⚡";
+}
+
 function notifyConfigWriteError(ctx: ExtensionCommandContext, error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   ctx.ui.notify(`Failed to save service tier config: ${message}`, "error");
@@ -87,8 +92,8 @@ export default function (pi: ExtensionAPI) {
       widget: {
         id: SERVICE_TIER_WIDGET_ID,
         label: "Service tier",
-        description: "Shows a bolt when a provider service tier is active.",
-        content: { type: "text", text: currentServiceTier ? "⚡" : "" },
+        description: "Shows two bolts for ultrafast or one for another active tier.",
+        content: { type: "text", text: formatServiceTier(currentServiceTier) },
         icon: false,
         layout: {
           row: 1,
@@ -182,43 +187,46 @@ export default function (pi: ExtensionAPI) {
     }
   };
 
-  pi.registerCommand("fast", {
-    description: "Toggle fast service tier for the current provider in this session.",
-    handler: async (_args, ctx) => {
-      const config = loadConfigForCommand(ctx);
-      if (!config) return;
+  for (const speed of ["fast", "ultrafast"] as const) {
+    pi.registerCommand(speed, {
+      description: `Toggle ${speed} service tier for the current provider in this session.`,
+      handler: async (_args, ctx) => {
+        const config = loadConfigForCommand(ctx);
+        if (!config) return;
 
-      const result = toggleFastServiceTier(effectiveSettings(config), ctx.model);
-      if (!result) {
+        const result = toggleServiceTierSpeed(effectiveSettings(config), ctx.model, speed);
+        if (!result) {
+          const label = speed === "ultrafast" ? "Ultrafast service tier" : "Service tier";
+          ctx.ui.notify(
+            `${label} is not supported for ${formatModel(ctx.model)}.`,
+            "warning",
+          );
+          return;
+        }
+
+        const state: ServiceTierSessionState = {
+          version: 1,
+          overrides: { ...sessionOverrides, [result.provider]: result.serviceTier },
+        };
+        try {
+          pi.appendEntry(SERVICE_TIER_SESSION_ENTRY, state);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          ctx.ui.notify(`Failed to save session service tier: ${message}`, "error");
+          return;
+        }
+        sessionOverrides = state.overrides;
+        refreshServiceTier(ctx, effectiveSettings(config), true);
+
+        const providerLabel =
+          SERVICE_TIER_PROVIDER_DEFINITIONS[result.provider].label;
         ctx.ui.notify(
-          `Service tier is not supported for ${formatModel(ctx.model)}.`,
-          "warning",
+          `${providerLabel} service tier for this session: ${result.serviceTier || "off"}`,
+          "info",
         );
-        return;
-      }
-
-      const state: ServiceTierSessionState = {
-        version: 1,
-        overrides: { ...sessionOverrides, [result.provider]: result.serviceTier },
-      };
-      try {
-        pi.appendEntry(SERVICE_TIER_SESSION_ENTRY, state);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        ctx.ui.notify(`Failed to save session service tier: ${message}`, "error");
-        return;
-      }
-      sessionOverrides = state.overrides;
-      refreshServiceTier(ctx, effectiveSettings(config), true);
-
-      const providerLabel =
-        SERVICE_TIER_PROVIDER_DEFINITIONS[result.provider].label;
-      ctx.ui.notify(
-        `${providerLabel} service tier for this session: ${result.serviceTier || "off"}`,
-        "info",
-      );
-    },
-  });
+      },
+    });
+  }
 
   pi.registerCommand("service-tier", {
     description: "Configure global provider service tier defaults.",
@@ -239,7 +247,7 @@ export default function (pi: ExtensionAPI) {
           new Text(
             `${theme.fg("accent", theme.bold("Global service tier defaults"))}\n${theme.fg(
               "dim",
-              `${getServiceTierConfigPath()}\nSession /fast overrides take precedence.`,
+              `${getServiceTierConfigPath()}\nSession /fast and /ultrafast overrides take precedence.`,
             )}`,
             0,
             0,

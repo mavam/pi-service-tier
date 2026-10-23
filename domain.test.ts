@@ -2,17 +2,32 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   setProviderServiceTier,
-  toggleFastServiceTier,
+  toggleServiceTierSpeed,
 } from "./domain.ts";
 
 const model = { provider: "openai", api: "openai-responses" };
 
-test("fast decisions do not mutate or carry a storage snapshot", () => {
+test("fast and ultrafast select one tier and toggle the active tier off", () => {
+  const cases = [
+    { current: "", speed: "ultrafast", next: "ultrafast" },
+    { current: "flex", speed: "ultrafast", next: "ultrafast" },
+    { current: "priority", speed: "ultrafast", next: "ultrafast" },
+    { current: "ultrafast", speed: "ultrafast", next: "" },
+    { current: "ultrafast", speed: "fast", next: "priority" },
+  ] as const;
+  for (const { current, speed, next } of cases) {
+    assert.deepEqual(toggleServiceTierSpeed({ openai: current }, model, speed), {
+      provider: "openai", serviceTier: next, enabled: next !== "",
+    });
+  }
+});
+
+test("speed toggles leave settings unchanged", () => {
   const settings = Object.freeze({ openai: "flex", anthropic: "standard" } as const);
-  assert.deepEqual(toggleFastServiceTier(settings, model), {
+  assert.deepEqual(toggleServiceTierSpeed(settings, model), {
     provider: "openai",
     serviceTier: "priority",
-    fast: true,
+    enabled: true,
   });
   assert.deepEqual(settings, { openai: "flex", anthropic: "standard" });
 });

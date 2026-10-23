@@ -8,28 +8,31 @@ import { SERVICE_TIER_SESSION_ENTRY } from "./session-state.ts";
 const codex = { provider: "openai-codex", api: "openai-codex-responses" };
 const anthropic = { provider: "anthropic", api: "anthropic-messages" };
 
-test("agent snapshots use the supplied branch and stay fixed across changes", () => {
-  let defaults: ServiceTierConfigSnapshot = { "openai-codex": "priority", anthropic: "priority" };
-  const hooks = createAgentHooks(() => defaults);
-  const parent = SessionManager.inMemory();
-  parent.appendCustomEntry(SERVICE_TIER_SESSION_ENTRY, {
-    version: 1, overrides: { "openai-codex": "" },
+for (const serviceTier of ["flex", "ultrafast"] as const) {
+  test(`agent snapshots with ${serviceTier} use the supplied branch and stay fixed across changes`, () => {
+    let defaults: ServiceTierConfigSnapshot = { "openai-codex": "priority", anthropic: "priority" };
+    const hooks = createAgentHooks(() => defaults);
+    const parent = SessionManager.inMemory();
+    parent.appendCustomEntry(SERVICE_TIER_SESSION_ENTRY, {
+      version: 1, overrides: { "openai-codex": "" },
+    });
+    const state = hooks.onAgentCreate({ parent: { branch: parent.getBranch() } });
+    assert.equal(hooks.onAgentRequest({ state, model: codex }, {}), undefined);
+    assert.deepEqual(hooks.onAgentRequest({ state, model: anthropic }, {}), { service_tier: "auto" });
+    parent.appendCustomEntry(SERVICE_TIER_SESSION_ENTRY, {
+      version: 1, overrides: { "openai-codex": serviceTier },
+    });
+    const next = hooks.onAgentCreate({ parent: { branch: parent.getBranch() } });
+    assert.deepEqual(hooks.onAgentRequest({ state: next, model: codex }, {}), { service_tier: serviceTier });
+    defaults = {};
+    // The old snapshot remains authoritative, even with a newly loaded adapter.
+    const resumed = createAgentHooks(() => defaults);
+    assert.deepEqual(resumed.onAgentRequest({ state: JSON.parse(JSON.stringify(state)), model: anthropic }, {}), { service_tier: "auto" });
+    assert.equal(resumed.onAgentRequest({ state, model: codex }, {}), undefined);
+    assert.deepEqual(resumed.onAgentRequest({ state: JSON.parse(JSON.stringify(next)), model: codex }, {}), { service_tier: serviceTier });
+    assert.equal(resumed.onAgentRequest({ state, model: { provider: "other", api: "anthropic-messages" } }, {}), undefined);
   });
-  const state = hooks.onAgentCreate({ parent: { branch: parent.getBranch() } });
-  assert.equal(hooks.onAgentRequest({ state, model: codex }, {}), undefined);
-  assert.deepEqual(hooks.onAgentRequest({ state, model: anthropic }, {}), { service_tier: "auto" });
-  parent.appendCustomEntry(SERVICE_TIER_SESSION_ENTRY, {
-    version: 1, overrides: { "openai-codex": "flex" },
-  });
-  const next = hooks.onAgentCreate({ parent: { branch: parent.getBranch() } });
-  assert.deepEqual(hooks.onAgentRequest({ state: next, model: codex }, {}), { service_tier: "flex" });
-  defaults = {};
-  // The old snapshot remains authoritative, even with a newly loaded adapter.
-  const resumed = createAgentHooks(() => defaults);
-  assert.deepEqual(resumed.onAgentRequest({ state: JSON.parse(JSON.stringify(state)), model: anthropic }, {}), { service_tier: "auto" });
-  assert.equal(resumed.onAgentRequest({ state, model: codex }, {}), undefined);
-  assert.equal(resumed.onAgentRequest({ state, model: { provider: "other", api: "anthropic-messages" } }, {}), undefined);
-});
+}
 
 test("undefined state passes through; unknown versions and malformed state fail", () => {
   const hooks = createAgentHooks(() => ({}));
