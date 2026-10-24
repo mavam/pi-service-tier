@@ -1,0 +1,8 @@
+created: 2026-10-24
+title: Ultrafast mode for OpenAI
+intro: "Select OpenAI\u2019s ultrafast tier with /ultrafast or configure it as a global\
+  \ default. Session restoration and child agents preserve your selected tier, and\
+  \ the footer distinguishes ultrafast with two bolts."
+source:
+  mode: sync-stable-queue
+  previous_stable: v0.5.0
