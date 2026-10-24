@@ -7,7 +7,8 @@ export const SERVICE_TIER_PROVIDERS = [
 ] as const;
 export type ServiceTierProvider = (typeof SERVICE_TIER_PROVIDERS)[number];
 
-export type ServiceTierName = "flex" | "priority" | "standard";
+export type ServiceTierName = "flex" | "priority" | "standard" | "ultrafast";
+export type ServiceTierSpeed = "fast" | "ultrafast";
 /** An omitted provider leaves the provider's default behavior unchanged. */
 export type ServiceTierConfigSnapshot = Partial<
   Record<ServiceTierProvider, ServiceTierName>
@@ -40,6 +41,7 @@ export interface ServiceTierProviderDefinition {
   api: string;
   tiers: readonly ServiceTier[];
   fastTier?: ServiceTierName;
+  ultrafastTier?: ServiceTierName;
 }
 
 function tier(name: ServiceTierName, value: string = name): ServiceTier {
@@ -53,14 +55,16 @@ export const SERVICE_TIER_PROVIDER_DEFINITIONS: Record<
   openai: {
     label: "OpenAI",
     api: "openai-responses",
-    tiers: [tier("flex"), tier("priority")],
+    tiers: [tier("flex"), tier("priority"), tier("ultrafast")],
     fastTier: "priority",
+    ultrafastTier: "ultrafast",
   },
   "openai-codex": {
     label: "OpenAI Codex",
     api: "openai-codex-responses",
-    tiers: [tier("flex"), tier("priority")],
+    tiers: [tier("flex"), tier("priority"), tier("ultrafast")],
     fastTier: "priority",
+    ultrafastTier: "ultrafast",
   },
   anthropic: {
     label: "Anthropic",
@@ -174,29 +178,33 @@ export function applyServiceTierToPayload(
   return applyPayloadServiceTier(payload, provider, serviceTier.value);
 }
 
-export interface FastToggleResult {
+export interface ServiceTierToggleResult {
   provider: ServiceTierProvider;
   serviceTier: ServiceTierSelection;
-  fast: boolean;
+  enabled: boolean;
 }
 
-export function toggleFastServiceTier(
+export function toggleServiceTierSpeed(
   config: ServiceTierSettings,
   model: ServiceTierModel | undefined,
-): FastToggleResult | undefined {
+  speed: ServiceTierSpeed = "fast",
+): ServiceTierToggleResult | undefined {
   const provider = getServiceTierProviderForModel(model);
   if (!provider) return undefined;
 
   const definition = SERVICE_TIER_PROVIDER_DEFINITIONS[provider];
-  if (!definition.fastTier) return undefined;
+  const targetTier = speed === "ultrafast"
+    ? definition.ultrafastTier
+    : definition.fastTier;
+  if (!targetTier) return undefined;
 
   const current = getConfiguredServiceTier(config, provider);
-  const fast = current !== definition.fastTier;
-  const serviceTier = fast ? definition.fastTier : "";
+  const enabled = current !== targetTier;
+  const serviceTier = enabled ? targetTier : "";
   return {
     provider,
     serviceTier,
-    fast,
+    enabled,
   };
 }
 

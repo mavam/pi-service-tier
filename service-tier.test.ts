@@ -27,7 +27,8 @@ import {
   applyServiceTierToPayload,
   modelSupportsServiceTier,
   resolveEffectiveServiceTier,
-  toggleFastServiceTier,
+  toggleServiceTierSpeed,
+  type ServiceTierSpeed,
 } from "./domain.ts";
 import {
   SERVICE_TIER_CONFIG_FILE,
@@ -162,6 +163,11 @@ test("parseServiceTierConfigValue accepts current provider keys and tiers", () =
     }),
     { anthropic: "standard" },
   );
+  assert.deepEqual(parseServiceTierConfigValue("config", {
+    openai: "ultrafast", "openai-codex": "ultrafast",
+  }), {
+    openai: "ultrafast", "openai-codex": "ultrafast",
+  });
 });
 
 test("parseServiceTierConfigValue rejects unknown settings and invalid tiers", () => {
@@ -197,6 +203,12 @@ test("parseServiceTierConfigValue rejects unknown settings and invalid tiers", (
     () => parseServiceTierConfigValue("config", { google: "standard" }),
     /Invalid config:/,
   );
+  for (const provider of ["anthropic", "google", "google-vertex"]) {
+    assert.throws(
+      () => parseServiceTierConfigValue("config", { [provider]: "ultrafast" }),
+      /Invalid config:/,
+    );
+  }
   assert.throws(
     () => parseServiceTierConfigValue("config", ["not", "an", "object"]),
     /Invalid config:/,
@@ -313,6 +325,20 @@ test("applyServiceTierToPayload injects provider-specific service tier values", 
     "google-vertex": "flex",
   } as const;
 
+  for (const [provider, api] of [
+    ["openai", "openai-responses"],
+    ["openai-codex", "openai-codex-responses"],
+  ] as const) {
+    assert.deepEqual(
+      applyServiceTierToPayload(
+        { model: "model-a", stream: true },
+        { [provider]: "ultrafast" },
+        { provider, api, id: "model-a" },
+      ),
+      { model: "model-a", stream: true, service_tier: "ultrafast" },
+    );
+  }
+
   assert.deepEqual(
     applyServiceTierToPayload(
       { model: "gpt-5.5", stream: true },
@@ -393,50 +419,50 @@ test("applyServiceTierToPayload injects provider-specific service tier values", 
   );
 });
 
-test("toggleFastServiceTier maps providers to fast and off", () => {
+test("toggleServiceTierSpeed maps providers to fast and off", () => {
   assert.deepEqual(
-    toggleFastServiceTier({}, { provider: "openai", api: "openai-responses" }),
+    toggleServiceTierSpeed({}, { provider: "openai", api: "openai-responses" }),
     {
       provider: "openai",
       serviceTier: "priority",
-      fast: true,
+      enabled: true,
     },
   );
   assert.deepEqual(
-    toggleFastServiceTier(
+    toggleServiceTierSpeed(
       { openai: "priority" },
       { provider: "openai", api: "openai-responses" },
     ),
     {
       provider: "openai",
       serviceTier: "",
-      fast: false,
+      enabled: false,
     },
   );
   assert.deepEqual(
-    toggleFastServiceTier(
+    toggleServiceTierSpeed(
       {},
       { provider: "anthropic", api: "anthropic-messages" },
     ),
     {
       provider: "anthropic",
       serviceTier: "priority",
-      fast: true,
+      enabled: true,
     },
   );
   assert.deepEqual(
-    toggleFastServiceTier(
+    toggleServiceTierSpeed(
       {},
       { provider: "google", api: "google-generative-ai" },
     ),
     {
       provider: "google",
       serviceTier: "priority",
-      fast: true,
+      enabled: true,
     },
   );
   assert.equal(
-    toggleFastServiceTier({}, { provider: "openrouter", api: "openai-responses" }),
+    toggleServiceTierSpeed({}, { provider: "openrouter", api: "openai-responses" }),
     undefined,
   );
 });
@@ -463,11 +489,11 @@ test("createServiceTierSections puts the current model first with provider-speci
   assert.equal(sections[1]?.id, "providers");
   assert.deepEqual(
     sections[1]?.items.find((item) => item.id === "openai")?.values,
-    ["off", "flex", "priority"],
+    ["off", "flex", "priority", "ultrafast"],
   );
   assert.deepEqual(
     sections[1]?.items.find((item) => item.id === "openai-codex")?.values,
-    ["off", "flex", "priority"],
+    ["off", "flex", "priority", "ultrafast"],
   );
   assert.deepEqual(
     sections[1]?.items.find((item) => item.id === "google")?.values,
@@ -479,45 +505,50 @@ test("createServiceTierSections puts the current model first with provider-speci
   );
 });
 
-test("fancy footer receives a complete snapshot for an active tier", async () =>
-  withAgentDir(async (dir) => {
-    writeFileSync(
-      join(dir, SERVICE_TIER_CONFIG_FILE),
-      JSON.stringify({ anthropic: "priority" }),
-    );
+for (const { provider, api, tier, footer } of [
+  { provider: "anthropic", api: "anthropic-messages", tier: "priority", footer: "⚡" },
+  { provider: "openai-codex", api: "openai-codex-responses", tier: "ultrafast", footer: "⚡⚡" },
+] as const) {
+  test(`fancy footer receives a complete snapshot for ${tier}`, async () =>
+    withAgentDir(async (dir) => {
+      writeFileSync(
+        join(dir, SERVICE_TIER_CONFIG_FILE),
+        JSON.stringify({ [provider]: tier }),
+      );
 
-    const { extensionEvents, emitPiEvent, context } = setupExtension();
-    await emitPiEvent(
-      "session_start",
-      { type: "session_start" },
-      context({
-        provider: "anthropic",
-        api: "anthropic-messages",
-        id: "claude-sonnet-4-5",
-      } as ExtensionContext["model"]),
-    );
+      const { extensionEvents, emitPiEvent, context } = setupExtension();
+      await emitPiEvent(
+        "session_start",
+        { type: "session_start" },
+        context({
+          provider,
+          api,
+          id: "model-a",
+        } as ExtensionContext["model"]),
+      );
 
-    assert.deepEqual(extensionEvents.at(-1), {
-      event: "pi-fancy-footer:widget",
-      payload: {
-        protocol: 1,
-        type: "upsert",
-        widget: {
-          id: "pi-service-tier.service-tier",
-          label: "Service tier",
-          description: "Shows a bolt when a provider service tier is active.",
-          content: { type: "text", text: "⚡" },
-          icon: false,
-          layout: {
-            row: 1,
-            position: 8,
-            align: "right",
-            fill: "none",
+      assert.deepEqual(extensionEvents.at(-1), {
+        event: "pi-fancy-footer:widget",
+        payload: {
+          protocol: 1,
+          type: "upsert",
+          widget: {
+            id: "pi-service-tier.service-tier",
+            label: "Service tier",
+            description: "Shows two bolts for ultrafast or one for another active tier.",
+            content: { type: "text", text: footer },
+            icon: false,
+            layout: {
+              row: 1,
+              position: 8,
+              align: "right",
+              fill: "none",
+            },
           },
         },
-      },
-    });
-  }));
+      });
+    }));
+}
 
 test("fancy footer keeps an inactive widget configurable with empty text", async () =>
   withAgentDir(async (dir) => {
@@ -590,10 +621,21 @@ const anthropicModel = {
   id: "claude-sonnet-4-5",
 } as ExtensionContext["model"];
 
+const SPEED_CASES = [
+  { speed: "fast", tier: "priority", footer: "⚡" },
+  { speed: "ultrafast", tier: "ultrafast", footer: "⚡⚡" },
+] as const;
+
 type Harness = ReturnType<typeof setupExtension>;
 
-async function toggle(harness: Harness, model = codexModel) {
-  await harness.commands.get("fast")!.handler("", harness.context(model));
+async function toggle(
+  harness: Harness,
+  model = codexModel,
+  speed: ServiceTierSpeed = "fast",
+) {
+  const command = harness.commands.get(speed);
+  assert.ok(command, `Missing /${speed} command`);
+  await command.handler("", harness.context(model));
 }
 
 async function request(harness: Harness, model = codexModel) {
@@ -611,152 +653,218 @@ function footerText(harness: Harness): string {
   return last.widget.content.text;
 }
 
-test("/fast isolates sessions and providers without creating a global file", async () =>
-  withAgentDir(async (dir) => {
-    const first = setupExtension();
-    const second = setupExtension();
-    await toggle(first);
-    assert.equal(existsSync(join(dir, SERVICE_TIER_CONFIG_FILE)), false);
-    assert.deepEqual(await request(first), {
-      model: codexModel?.id, service_tier: "priority",
-    });
-    assert.deepEqual(await request(second), { model: codexModel?.id });
-    assert.equal(footerText(first), "⚡");
-    assert.equal(footerText(second), "");
-    assert.equal(first.notifications.at(-1)?.message,
-      "OpenAI Codex service tier for this session: priority");
+for (const [provider, api] of [
+  ["openai", "openai-responses"],
+  ["openai-codex", "openai-codex-responses"],
+] as const) {
+  test(`/ultrafast switches ${provider} session speed without changing defaults`, async () =>
+    withAgentDir(async (dir) => {
+      const model = { provider, api, id: "gpt-6-astra" } as ExtensionContext["model"];
+      const first = setupExtension();
+      const second = setupExtension();
+      const transitions: { payload: unknown; footer: string }[] = [];
+      for (const speed of ["ultrafast", "fast", "ultrafast", "ultrafast"] as const) {
+        await toggle(first, model, speed);
+        transitions.push({ payload: await request(first, model), footer: footerText(first) });
+      }
+      const entry = first.sessionManager.getLeafEntry();
+      assert.deepEqual({
+        transitions,
+        otherSession: await request(second, model),
+        globalFileExists: existsSync(join(dir, SERVICE_TIER_CONFIG_FILE)),
+        snapshot: entry?.type === "custom"
+          ? { customType: entry.customType, data: entry.data }
+          : undefined,
+      }, {
+        transitions: [
+          { payload: { model: "gpt-6-astra", service_tier: "ultrafast" }, footer: "⚡⚡" },
+          { payload: { model: "gpt-6-astra", service_tier: "priority" }, footer: "⚡" },
+          { payload: { model: "gpt-6-astra", service_tier: "ultrafast" }, footer: "⚡⚡" },
+          { payload: { model: "gpt-6-astra" }, footer: "" },
+        ],
+        otherSession: { model: "gpt-6-astra" },
+        globalFileExists: false,
+        snapshot: {
+          customType: SERVICE_TIER_SESSION_ENTRY,
+          data: { version: 1, overrides: { [provider]: "" } },
+        },
+      });
+    }));
+}
 
-    await toggle(first, anthropicModel);
-    await first.emitPiEvent("model_select", {}, first.context(anthropicModel));
-    assert.deepEqual(await request(first, anthropicModel), {
-      model: anthropicModel?.id, service_tier: "auto",
-    });
-    await toggle(first);
-    assert.deepEqual(await request(first), { model: codexModel?.id });
-    assert.equal(footerText(first), "");
-    assert.equal(first.notifications.at(-1)?.message,
-      "OpenAI Codex service tier for this session: off");
-    await first.emitPiEvent("model_select", {}, first.context(anthropicModel));
-    assert.equal(footerText(first), "⚡");
-    const entry = first.sessionManager.getLeafEntry();
-    assert.equal(entry?.type, "custom");
-    if (entry?.type !== "custom") throw new Error("Missing session snapshot");
-    assert.equal(entry.customType, SERVICE_TIER_SESSION_ENTRY);
-    assert.deepEqual(entry.data, {
-      version: 1, overrides: { "openai-codex": "", anthropic: "priority" },
-    });
-    assert.deepEqual(first.sessionManager.buildSessionContext().messages, []);
-  }));
+for (const { speed, tier, footer } of SPEED_CASES) {
+  const model = codexModel;
+  test(`/${speed} isolates sessions and providers without creating a global file`, async () =>
+    withAgentDir(async (dir) => {
+      const first = setupExtension();
+      const second = setupExtension();
+      await toggle(first, model, speed);
+      assert.equal(existsSync(join(dir, SERVICE_TIER_CONFIG_FILE)), false);
+      assert.deepEqual(await request(first, model), {
+        model: model?.id, service_tier: tier,
+      });
+      assert.deepEqual(await request(second, model), { model: model?.id });
+      assert.equal(footerText(first), footer);
+      assert.equal(footerText(second), "");
+      assert.equal(first.notifications.at(-1)?.message,
+        `OpenAI Codex service tier for this session: ${tier}`);
 
-test("explicit off masks global defaults while untouched providers keep inheriting", async () =>
-  withAgentDir(async (dir) => {
-    const configPath = join(dir, SERVICE_TIER_CONFIG_FILE);
-    writeServiceTierConfigSnapshot({ "openai-codex": "priority", anthropic: "standard" });
-    const original = readFileSync(configPath, "utf8");
-    const first = setupExtension();
-    await toggle(first);
-    assert.equal(readFileSync(configPath, "utf8"), original);
-    assert.deepEqual(await request(first), { model: codexModel?.id });
-    const restored = setupExtension(first.sessionManager);
-    await restored.emitPiEvent("session_start", { reason: "reload" }, restored.context(codexModel));
-    assert.deepEqual(await request(restored), { model: codexModel?.id });
-    assert.equal(footerText(restored), "");
-    assert.deepEqual(await request(setupExtension()), {
-      model: codexModel?.id, service_tier: "priority",
-    });
+      await toggle(first, anthropicModel);
+      await first.emitPiEvent("model_select", {}, first.context(anthropicModel));
+      assert.deepEqual(await request(first, anthropicModel), {
+        model: anthropicModel?.id, service_tier: "auto",
+      });
+      await toggle(first, model, speed);
+      assert.deepEqual(await request(first, model), { model: model?.id });
+      assert.equal(footerText(first), "");
+      assert.equal(first.notifications.at(-1)?.message,
+        "OpenAI Codex service tier for this session: off");
+      await first.emitPiEvent("model_select", {}, first.context(anthropicModel));
+      assert.equal(footerText(first), "⚡");
+      const entry = first.sessionManager.getLeafEntry();
+      assert.equal(entry?.type, "custom");
+      if (entry?.type !== "custom") throw new Error("Missing session snapshot");
+      assert.equal(entry.customType, SERVICE_TIER_SESSION_ENTRY);
+      assert.deepEqual(entry.data, {
+        version: 1, overrides: { "openai-codex": "", anthropic: "priority" },
+      });
+      assert.deepEqual(first.sessionManager.buildSessionContext().messages, []);
+    }));
 
-    writeServiceTierConfigSnapshot({ "openai-codex": "flex", anthropic: "priority" });
-    assert.deepEqual(await request(first), { model: codexModel?.id });
-    assert.deepEqual(await request(first, anthropicModel), {
-      model: anthropicModel?.id, service_tier: "auto",
-    });
-    assert.deepEqual(await request(setupExtension()), {
-      model: codexModel?.id, service_tier: "flex",
-    });
-    await toggle(first);
-    assert.deepEqual(await request(first), {
-      model: codexModel?.id, service_tier: "priority",
-    });
-    assert.equal(loadServiceTierConfig()["openai-codex"], "flex");
-  }));
+  test(`/${speed} off masks global defaults while untouched providers keep inheriting`, async () =>
+    withAgentDir(async (dir) => {
+      const configPath = join(dir, SERVICE_TIER_CONFIG_FILE);
+      writeServiceTierConfigSnapshot({ "openai-codex": tier, anthropic: "standard" });
+      const original = readFileSync(configPath, "utf8");
+      const first = setupExtension();
+      await toggle(first, model, speed);
+      assert.equal(readFileSync(configPath, "utf8"), original);
+      assert.deepEqual(await request(first, model), { model: model?.id });
+      const restored = setupExtension(first.sessionManager);
+      await restored.emitPiEvent("session_start", { reason: "reload" }, restored.context(model));
+      assert.deepEqual(await request(restored, model), { model: model?.id });
+      assert.equal(footerText(restored), "");
+      assert.deepEqual(await request(setupExtension(), model), {
+        model: model?.id, service_tier: tier,
+      });
 
-test("session restoration survives reload, resume, compaction, forks, and tree navigation", async () =>
-  withAgentDir(async (dir) => {
-    const sm = SessionManager.create(dir, join(dir, "sessions"));
-    const root = sm.appendMessage({ role: "user", content: "hello", timestamp: Date.now() });
-    // Pi flushes sessions after an assistant response; use a real persisted session.
-    sm.appendMessage({
-      role: "assistant", content: [], api: "openai-codex-responses",
-      provider: "openai-codex", model: "gpt-5.5-codex", stopReason: "stop",
-      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
-      timestamp: Date.now(),
-    });
-    const original = setupExtension(sm);
-    await toggle(original);
-    const on = sm.getLeafId()!;
-    await toggle(original);
-    const off = sm.getLeafId()!;
+      writeServiceTierConfigSnapshot({ "openai-codex": "flex", anthropic: "priority" });
+      assert.deepEqual(await request(first, model), { model: model?.id });
+      assert.deepEqual(await request(first, anthropicModel), {
+        model: anthropicModel?.id, service_tier: "auto",
+      });
+      assert.deepEqual(await request(setupExtension(), model), {
+        model: model?.id, service_tier: "flex",
+      });
+      await toggle(first, model, speed);
+      assert.deepEqual(await request(first, model), {
+        model: model?.id, service_tier: tier,
+      });
+      assert.equal(loadServiceTierConfig()["openai-codex"], "flex");
+    }));
 
-    const reopened = SessionManager.open(sm.getSessionFile()!);
-    const resumed = setupExtension(reopened);
-    await resumed.emitPiEvent("session_start", { reason: "resume" }, resumed.context(codexModel));
-    assert.deepEqual(await request(resumed), { model: codexModel?.id });
-    await toggle(resumed);
-    assert.deepEqual(await request(resumed), { model: codexModel?.id, service_tier: "priority" });
+  test(`/${speed} restoration survives reload, resume, compaction, forks, and tree navigation`, async () =>
+    withAgentDir(async (dir) => {
+      const sm = SessionManager.create(dir, join(dir, "sessions"));
+      const root = sm.appendMessage({ role: "user", content: "hello", timestamp: Date.now() });
+      // Pi flushes sessions after an assistant response; use a real persisted session.
+      sm.appendMessage({
+        role: "assistant", content: [], api: "openai-codex-responses",
+        provider: "openai-codex", model: model!.id, stopReason: "stop",
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        timestamp: Date.now(),
+      });
+      const original = setupExtension(sm);
+      await toggle(original, model, speed);
+      const on = sm.getLeafId()!;
+      await toggle(original, model, speed);
+      const off = sm.getLeafId()!;
 
-    sm.branch(on);
-    await original.emitPiEvent("session_tree", {}, original.context(codexModel));
-    assert.equal(footerText(original), "⚡");
-    assert.deepEqual(await request(original), { model: codexModel?.id, service_tier: "priority" });
-    sm.appendCompaction("summary", root, 100);
-    const reloaded = setupExtension(sm);
-    await reloaded.emitPiEvent("session_start", { reason: "reload" }, reloaded.context(codexModel));
-    assert.equal(footerText(reloaded), "⚡");
+      const reopened = SessionManager.open(sm.getSessionFile()!);
+      const resumed = setupExtension(reopened);
+      await resumed.emitPiEvent("session_start", { reason: "resume" }, resumed.context(model));
+      assert.deepEqual(await request(resumed, model), { model: model?.id });
+      await toggle(resumed, model, speed);
+      assert.deepEqual(await request(resumed, model), { model: model?.id, service_tier: tier });
 
-    const forkPath = sm.createBranchedSession(on)!;
-    const forked = setupExtension(SessionManager.open(forkPath));
-    await forked.emitPiEvent("session_start", { reason: "fork" }, forked.context(codexModel));
-    assert.equal(footerText(forked), "⚡");
-    await toggle(forked);
-    assert.deepEqual(await request(reloaded), { model: codexModel?.id, service_tier: "priority" });
+      sm.branch(on);
+      await original.emitPiEvent("session_tree", {}, original.context(model));
+      assert.equal(footerText(original), footer);
+      assert.deepEqual(await request(original, model), { model: model?.id, service_tier: tier });
+      sm.appendCompaction("summary", root, 100);
+      const reloaded = setupExtension(sm);
+      await reloaded.emitPiEvent("session_start", { reason: "reload" }, reloaded.context(model));
+      assert.equal(footerText(reloaded), footer);
 
-    // Use the reopened original because createBranchedSession switches its manager.
-    reopened.branch(off);
-    await resumed.emitPiEvent("session_tree", {}, resumed.context(codexModel));
-    assert.equal(footerText(resumed), "");
-    reopened.branch(root);
-    await resumed.emitPiEvent("session_tree", {}, resumed.context(codexModel));
-    await toggle(resumed);
-    assert.equal(footerText(resumed), "⚡");
+      const forkPath = sm.createBranchedSession(on)!;
+      const forked = setupExtension(SessionManager.open(forkPath));
+      await forked.emitPiEvent("session_start", { reason: "fork" }, forked.context(model));
+      assert.equal(footerText(forked), footer);
+      await toggle(forked, model, speed);
+      assert.deepEqual(await request(reloaded, model), { model: model?.id, service_tier: tier });
 
-    const fresh = setupExtension();
-    await fresh.emitPiEvent("session_start", { reason: "new" }, fresh.context(codexModel));
-    assert.deepEqual(await request(fresh), { model: codexModel?.id });
-  }));
+      // Use the reopened original because createBranchedSession switches its manager.
+      reopened.branch(off);
+      await resumed.emitPiEvent("session_tree", {}, resumed.context(model));
+      assert.equal(footerText(resumed), "");
+      reopened.branch(root);
+      await resumed.emitPiEvent("session_tree", {}, resumed.context(model));
+      await toggle(resumed, model, speed);
+      assert.equal(footerText(resumed), footer);
 
-test("unsupported models and invalid global configuration do not persist overrides", async () =>
-  withAgentDir(async (dir) => {
-    const harness = setupExtension();
-    for (const model of [undefined, { provider: "openrouter", api: "openai-responses" },
-      { provider: "openai", api: "openai-completions" }]) {
-      await harness.commands.get("fast")!.handler("", harness.context(model as ExtensionContext["model"]));
-      assert.equal(harness.notifications.at(-1)?.type, "warning");
-    }
-    assert.deepEqual(harness.sessionManager.getEntries(), []);
-    const configPath = join(dir, SERVICE_TIER_CONFIG_FILE);
-    writeFileSync(configPath, '{"serviceTier":"priority"}');
-    const originalWarn = console.warn;
-    console.warn = () => {};
-    try {
-      await toggle(harness);
-    } finally {
-      console.warn = originalWarn;
-    }
-    assert.equal(harness.notifications.at(-1)?.type, "error");
-    assert.deepEqual(harness.sessionManager.getEntries(), []);
-    assert.equal(readFileSync(configPath, "utf8"), '{"serviceTier":"priority"}');
-  }));
+      const fresh = setupExtension();
+      await fresh.emitPiEvent("session_start", { reason: "new" }, fresh.context(model));
+      assert.deepEqual(await request(fresh, model), { model: model?.id });
+    }));
+
+  test(`/${speed} rejects unsupported provider/APIs and invalid global configuration without changing overrides`, async () =>
+    withAgentDir(async (dir) => {
+      writeServiceTierConfigSnapshot({ "openai-codex": tier });
+      const harness = setupExtension();
+      const unsupported = [
+        undefined,
+        { provider: "openrouter", api: "openai-responses", id: "gpt-6-astra" },
+        { provider: "openai", api: "openai-completions", id: "gpt-6-astra" },
+      ];
+      if (speed === "ultrafast") {
+        unsupported.push(anthropicModel,
+          { provider: "google", api: "google-generative-ai", id: "gemini-3-pro" });
+      }
+      const command = harness.commands.get(speed);
+      assert.ok(command, `Missing /${speed} command`);
+      for (const unsupportedModel of unsupported) {
+        await command.handler("", harness.context(unsupportedModel as ExtensionContext["model"]));
+      }
+      const label = speed === "ultrafast" ? "Ultrafast service tier" : "Service tier";
+      assert.deepEqual({
+        notifications: harness.notifications,
+        entries: harness.sessionManager.getEntries(),
+        defaults: loadServiceTierConfig(),
+        payload: await request(harness, model),
+      }, {
+        notifications: unsupported.map((model) => ({
+          type: "warning",
+          message: `${label} is not supported for ${model ? `${model.provider}/${model.id}` : "the current model"}.`,
+        })),
+        entries: [],
+        defaults: { "openai-codex": tier },
+        payload: { model: model?.id, service_tier: tier },
+      });
+      const configPath = join(dir, SERVICE_TIER_CONFIG_FILE);
+      writeFileSync(configPath, '{"serviceTier":"priority"}');
+      const originalWarn = console.warn;
+      console.warn = () => {};
+      try {
+        await toggle(harness, model, speed);
+      } finally {
+        console.warn = originalWarn;
+      }
+      assert.equal(harness.notifications.at(-1)?.type, "error");
+      assert.deepEqual(harness.sessionManager.getEntries(), []);
+      assert.equal(readFileSync(configPath, "utf8"), '{"serviceTier":"priority"}');
+    }));
+}
 
 test("child hooks capture restored overrides before session_start", async () =>
   withAgentDir(async () => {
@@ -777,15 +885,18 @@ test("child hooks capture restored overrides before session_start", async () =>
     assert.deepEqual(hooks.onAgentRequest({ state, model: anthropicModel! }, {}), { service_tier: "auto" });
   }));
 
-test("failed session persistence does not activate fast mode", async () =>
-  withAgentDir(async () => {
-    const harness = setupExtension();
-    harness.sessionManager.appendCustomEntry = () => { throw new Error("disk full"); };
-    await toggle(harness);
-    assert.equal(harness.notifications.at(-1)?.type, "error");
-    assert.match(harness.notifications.at(-1)?.message ?? "", /disk full/);
-    assert.deepEqual(await request(harness), { model: codexModel?.id });
-  }));
+for (const { speed } of SPEED_CASES) {
+  const model = codexModel;
+  test(`failed session persistence does not activate /${speed}`, async () =>
+    withAgentDir(async () => {
+      const harness = setupExtension();
+      harness.sessionManager.appendCustomEntry = () => { throw new Error("disk full"); };
+      await toggle(harness, model, speed);
+      assert.equal(harness.notifications.at(-1)?.type, "error");
+      assert.match(harness.notifications.at(-1)?.message ?? "", /disk full/);
+      assert.deepEqual(await request(harness, model), { model: model?.id });
+    }));
+}
 
 test("/service-tier edits global defaults without overwriting session overrides", async () =>
   withAgentDir(async () => {
