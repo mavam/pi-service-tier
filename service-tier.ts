@@ -26,6 +26,7 @@ import {
 import {
   getServiceTierConfigPath,
   loadServiceTierConfig,
+  parseServiceTierFlag,
   writeServiceTierConfigSnapshot,
 } from "./config.ts";
 import { createServiceTierSections } from "./settings.ts";
@@ -136,8 +137,55 @@ export default function (pi: ExtensionAPI) {
     }
   };
 
+  pi.registerFlag("service-tier", {
+    type: "string",
+    description:
+      "Replace global service tier defaults for this process: off, or provider:tier pairs such as openai-codex:priority,anthropic:standard.",
+  });
+
+  type ProcessDefaultsFlag =
+    | { active: false }
+    | { active: true; config: ServiceTierConfigSnapshot }
+    | { active: true; error: string };
+
+  // Flag values arrive after extension loading; resolve once on first use.
+  let processFlag: ProcessDefaultsFlag | undefined;
+  let flagWarned = false;
+  const getProcessFlag = (): ProcessDefaultsFlag => {
+    if (processFlag) return processFlag;
+    const value = pi.getFlag("service-tier");
+    if (typeof value !== "string") {
+      processFlag = { active: false };
+      return processFlag;
+    }
+    try {
+      processFlag = { active: true, config: parseServiceTierFlag(value) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      processFlag = { active: true, error: message };
+    }
+    return processFlag;
+  };
+
+  const warnInvalidFlagOnce = (message: string): void => {
+    if (flagWarned) return;
+    console.warn(`pi-service-tier: ${message}`);
+    flagWarned = true;
+  };
+
+  /** Process defaults: `--service-tier` when set, otherwise `service-tier.json`. */
+  const loadProcessDefaults = (): ServiceTierConfigSnapshot => {
+    const flag = getProcessFlag();
+    if (!flag.active) return loadConfigOrDefault();
+    if ("error" in flag) {
+      warnInvalidFlagOnce(flag.error);
+      return { ...DEFAULT_SERVICE_TIER_CONFIG };
+    }
+    return flag.config;
+  };
+
   // Register during loading, before either extension starts its session.
-  registerAgentHooks(pi.events, loadConfigOrDefault);
+  registerAgentHooks(pi.events, loadProcessDefaults);
 
   const loadConfigForCommand = (
     ctx: ExtensionCommandContext,
@@ -154,8 +202,21 @@ export default function (pi: ExtensionAPI) {
     }
   };
 
+  const loadDefaultsForToggle = (
+    ctx: ExtensionCommandContext,
+  ): ServiceTierConfigSnapshot | undefined => {
+    const flag = getProcessFlag();
+    if (!flag.active) return loadConfigForCommand(ctx);
+    if ("error" in flag) {
+      warnInvalidFlagOnce(flag.error);
+      ctx.ui.notify(`Invalid service tier flag: ${flag.error}`, "error");
+      return undefined;
+    }
+    return flag.config;
+  };
+
   const effectiveSettings = (
-    defaults = loadConfigOrDefault(),
+    defaults = loadProcessDefaults(),
   ): ServiceTierSettings => mergeServiceTierSettings(defaults, sessionOverrides);
 
   const refreshServiceTier = (
@@ -179,7 +240,8 @@ export default function (pi: ExtensionAPI) {
   ): boolean => {
     try {
       writeServiceTierConfigSnapshot(config);
-      refreshServiceTier(ctx, effectiveSettings(config), true);
+      const defaults = getProcessFlag().active ? loadProcessDefaults() : config;
+      refreshServiceTier(ctx, effectiveSettings(defaults), true);
       return true;
     } catch (error) {
       notifyConfigWriteError(ctx, error);
@@ -191,10 +253,10 @@ export default function (pi: ExtensionAPI) {
     pi.registerCommand(speed, {
       description: `Toggle ${speed} service tier for the current provider in this session.`,
       handler: async (_args, ctx) => {
-        const config = loadConfigForCommand(ctx);
-        if (!config) return;
+        const defaults = loadDefaultsForToggle(ctx);
+        if (!defaults) return;
 
-        const result = toggleServiceTierSpeed(effectiveSettings(config), ctx.model, speed);
+        const result = toggleServiceTierSpeed(effectiveSettings(defaults), ctx.model, speed);
         if (!result) {
           const label = speed === "ultrafast" ? "Ultrafast service tier" : "Service tier";
           ctx.ui.notify(
@@ -216,7 +278,7 @@ export default function (pi: ExtensionAPI) {
           return;
         }
         sessionOverrides = state.overrides;
-        refreshServiceTier(ctx, effectiveSettings(config), true);
+        refreshServiceTier(ctx, effectiveSettings(defaults), true);
 
         const providerLabel =
           SERVICE_TIER_PROVIDER_DEFINITIONS[result.provider].label;
@@ -239,6 +301,10 @@ export default function (pi: ExtensionAPI) {
       const config = loadConfigForCommand(ctx);
       if (!config) return;
 
+      const subtitle = getProcessFlag().active
+        ? `${getServiceTierConfigPath()}\n--service-tier replaces global defaults in this process.\nSession /fast and /ultrafast overrides take precedence.`
+        : `${getServiceTierConfigPath()}\nSession /fast and /ultrafast overrides take precedence.`;
+
       await ctx.ui.custom((tui, theme, _keybindings, done) => {
         let currentConfig = config;
         const items = createServiceTierSettingItems(currentConfig, ctx.model);
@@ -247,7 +313,7 @@ export default function (pi: ExtensionAPI) {
           new Text(
             `${theme.fg("accent", theme.bold("Global service tier defaults"))}\n${theme.fg(
               "dim",
-              `${getServiceTierConfigPath()}\nSession /fast and /ultrafast overrides take precedence.`,
+              subtitle,
             )}`,
             0,
             0,

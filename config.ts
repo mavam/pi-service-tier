@@ -9,6 +9,8 @@ import {
   SERVICE_TIER_PROVIDERS,
   SERVICE_TIER_PROVIDER_DEFINITIONS,
   isRecord,
+  isServiceTierName,
+  isServiceTierProvider,
   type ServiceTierConfigSnapshot,
   type ServiceTierName,
   type ServiceTierProvider,
@@ -108,4 +110,43 @@ export function writeServiceTierConfigSnapshot(
 ): void {
   mkdirSync(dirname(configPath), { recursive: true });
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+}
+
+/**
+ * Parse `--service-tier`: `off` leaves every provider off; otherwise a
+ * comma-separated list of `provider:tier` pairs replacing global defaults.
+ */
+export function parseServiceTierFlag(value: string): ServiceTierConfigSnapshot {
+  const trimmed = value.trim();
+  if (trimmed === "off") return { ...DEFAULT_SERVICE_TIER_CONFIG };
+
+  const config: ServiceTierConfigSnapshot = {};
+  for (const rawItem of trimmed.split(",")) {
+    const item = rawItem.trim();
+    const parts = item.split(":");
+    if (parts.length !== 2) {
+      throw new Error(
+        `--service-tier: expected off or provider:tier pairs, got "${item}"`,
+      );
+    }
+    const provider = parts[0].trim();
+    const serviceTier = parts[1].trim();
+    if (!isServiceTierProvider(provider)) {
+      throw new Error(`--service-tier: unknown provider "${provider}"`);
+    }
+    if (provider in config) {
+      throw new Error(`--service-tier: ${provider} is set more than once`);
+    }
+    if (!isServiceTierName(provider, serviceTier)) {
+      const hint =
+        serviceTier === "off"
+          ? " (omit providers to leave them off, or use --service-tier=off)"
+          : "";
+      throw new Error(
+        `--service-tier: ${provider} has no service tier "${serviceTier}"${hint}`,
+      );
+    }
+    config[provider] = serviceTier;
+  }
+  return config;
 }

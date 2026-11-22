@@ -17,7 +17,15 @@ import type {
   RegisteredCommand,
 } from "@earendil-works/pi-coding-agent";
 
-import { initTheme, SessionManager, type KeybindingsManager, type Theme } from "@earendil-works/pi-coding-agent";
+import {
+  createAgentSessionFromServices,
+  createAgentSessionServices,
+  initTheme,
+  parseArgs,
+  SessionManager,
+  type KeybindingsManager,
+  type Theme,
+} from "@earendil-works/pi-coding-agent";
 import type { TUI } from "@earendil-works/pi-tui";
 import serviceTierExtension from "./service-tier.ts";
 import type { createAgentHooks } from "./agent-hooks.ts";
@@ -35,6 +43,7 @@ import {
   getServiceTierConfigPath,
   loadServiceTierConfig,
   parseServiceTierConfigValue,
+  parseServiceTierFlag,
   writeServiceTierConfigSnapshot,
 } from "./config.ts";
 import { createServiceTierSections } from "./settings.ts";
@@ -59,7 +68,10 @@ async function withAgentDir<T>(
   }
 }
 
-function setupExtension(sessionManager = SessionManager.inMemory()): {
+function setupExtension(
+  sessionManager = SessionManager.inMemory(),
+  flags: Record<string, string> = {},
+): {
   sessionManager: SessionManager;
   commands: Map<string, RegisteredCommand>;
   emitExtensionEvent: (event: string, payload: unknown) => void;
@@ -80,6 +92,10 @@ function setupExtension(sessionManager = SessionManager.inMemory()): {
     },
     registerCommand(name: string, options: RegisteredCommand) {
       commands.set(name, options);
+    },
+    registerFlag() {},
+    getFlag(name: string) {
+      return flags[name];
     },
     on(event: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) {
       const entries = handlers.get(event) ?? [];
@@ -966,4 +982,237 @@ test("/service-tier edits global defaults without overwriting session overrides"
     assert.equal(footerText(harness), "⚡");
     assert.deepEqual(await request(setupExtension()), { model: codexModel?.id, service_tier: "flex" });
     assert.equal(harness.sessionManager.getEntries().length, 1);
+  }));
+
+test("parseServiceTierFlag accepts off and provider:tier pairs", () => {
+  assert.deepEqual(parseServiceTierFlag("off"), {});
+  assert.deepEqual(parseServiceTierFlag("  off  "), {});
+  assert.deepEqual(parseServiceTierFlag("openai-codex:priority, anthropic:standard"), {
+    "openai-codex": "priority",
+    anthropic: "standard",
+  });
+  assert.throws(
+    () => parseServiceTierFlag("openai-codex"),
+    /expected off or provider:tier pairs/,
+  );
+  assert.throws(
+    () => parseServiceTierFlag("nope:priority"),
+    /unknown provider "nope"/,
+  );
+  assert.throws(
+    () => parseServiceTierFlag("openai:flex,openai:priority"),
+    /set more than once/,
+  );
+  assert.throws(
+    () => parseServiceTierFlag("openai-codex:standard"),
+    /has no service tier "standard"/,
+  );
+  assert.throws(
+    () => parseServiceTierFlag("anthropic:off"),
+    /omit providers to leave them off/,
+  );
+  for (const value of ["", "fast", "openai:flex:x", "openai:flex,", "openai:"]) {
+    assert.throws(() => parseServiceTierFlag(value), /--service-tier/, value);
+  }
+});
+
+test("--service-tier replaces global defaults hermetically under session overrides", async () =>
+  withAgentDir(async () => {
+    writeServiceTierConfigSnapshot({ "openai-codex": "priority", anthropic: "priority" });
+    const harness = setupExtension(undefined, { "service-tier": "openai-codex:flex" });
+    await harness.emitPiEvent("session_start", {}, harness.context(codexModel));
+    assert.deepEqual(await request(harness), { model: codexModel?.id, service_tier: "flex" });
+    assert.equal(footerText(harness), "⚡");
+    // Unlisted providers stay off instead of inheriting service-tier.json.
+    assert.deepEqual(await request(harness, anthropicModel), { model: anthropicModel?.id });
+
+    await toggle(harness, anthropicModel);
+    assert.deepEqual(await request(harness, anthropicModel), {
+      model: anthropicModel?.id, service_tier: "auto",
+    });
+    assert.deepEqual(await request(harness), { model: codexModel?.id, service_tier: "flex" });
+    // Only the session choice is saved; flag defaults are never persisted.
+    assert.deepEqual(
+      harness.sessionManager.getEntries().map((entry) => entry.type === "custom" && entry.data),
+      [{ version: 1, overrides: { anthropic: "priority" } }],
+    );
+    const reopened = setupExtension(harness.sessionManager);
+    await reopened.emitPiEvent("session_start", {}, reopened.context(codexModel));
+    assert.deepEqual(await request(reopened), { model: codexModel?.id, service_tier: "priority" });
+    assert.deepEqual(await request(reopened, anthropicModel), {
+      model: anthropicModel?.id, service_tier: "auto",
+    });
+
+    const offHarness = setupExtension(undefined, { "service-tier": "off" });
+    await offHarness.emitPiEvent("session_start", {}, offHarness.context(codexModel));
+    assert.deepEqual(await request(offHarness), { model: codexModel?.id });
+    assert.equal(footerText(offHarness), "");
+  }));
+
+test("/service-tier edits global defaults without overriding active --service-tier in this process", async () =>
+  withAgentDir(async () => {
+    initTheme("dark");
+    const harness = setupExtension(undefined, { "service-tier": "off" });
+    await harness.emitPiEvent("session_start", {}, harness.context(codexModel));
+    const ctx = harness.context(codexModel);
+    ctx.ui.custom = async (factory) => {
+      const component = await factory(
+        { requestRender() {} } as TUI,
+        { fg: (_color: string, text: string) => text, bold: (text: string) => text } as Theme,
+        {} as KeybindingsManager,
+        () => {},
+      );
+      assert.match(
+        component.render(100).join("\n"),
+        /--service-tier replaces global defaults in this process/,
+      );
+      component.handleInput!(" "); // Global off -> flex.
+      component.handleInput!("\x1b");
+      return undefined as never;
+    };
+    await harness.commands.get("service-tier")!.handler("", ctx);
+    assert.deepEqual(loadServiceTierConfig(), { "openai-codex": "flex" });
+    assert.deepEqual(await request(harness), { model: codexModel?.id });
+    assert.equal(footerText(harness), "");
+  }));
+
+test("child hooks capture --service-tier defaults hermetically", async () =>
+  withAgentDir(async () => {
+    writeServiceTierConfigSnapshot({ "openai-codex": "priority" });
+    const parent = SessionManager.inMemory();
+    const harness = setupExtension(parent, { "service-tier": "anthropic:priority" });
+    let hooks: ReturnType<typeof createAgentHooks> | undefined;
+    harness.emitExtensionEvent("pi-agents:hooks:discover", {
+      protocol: 1,
+      register(value: ReturnType<typeof createAgentHooks>) { hooks = value; },
+    });
+    assert.ok(hooks);
+    const state = hooks.onAgentCreate({ parent: { branch: parent.getBranch() } });
+    assert.equal(hooks.onAgentRequest({ state, model: codexModel! }, {}), undefined);
+    assert.deepEqual(hooks.onAgentRequest({ state, model: anthropicModel! }, {}), { service_tier: "auto" });
+  }));
+
+test("valid --service-tier ignores a malformed global file for requests and session toggles", async () =>
+  withAgentDir(async (dir) => {
+    const configPath = join(dir, SERVICE_TIER_CONFIG_FILE);
+    writeFileSync(configPath, "{");
+    const harness = setupExtension(undefined, { "service-tier": "openai-codex:priority" });
+    assert.deepEqual(await request(harness), { model: codexModel?.id, service_tier: "priority" });
+    await toggle(harness);
+    assert.deepEqual(await request(harness), { model: codexModel?.id });
+    // Unlisted providers are cleanly off too; global file is never consulted.
+    await toggle(harness, anthropicModel);
+    assert.deepEqual(await request(harness, anthropicModel), {
+      model: anthropicModel?.id, service_tier: "auto",
+    });
+    assert.deepEqual(
+      harness.sessionManager.getEntries().map((entry) => entry.type === "custom" && entry.data),
+      [
+        { version: 1, overrides: { "openai-codex": "" } },
+        { version: 1, overrides: { "openai-codex": "", anthropic: "priority" } },
+      ],
+    );
+    assert.equal(readFileSync(configPath, "utf8"), "{");
+  }));
+
+test("an invalid --service-tier fails closed, warns once, and blocks toggles", async () =>
+  withAgentDir(async () => {
+    writeServiceTierConfigSnapshot({ "openai-codex": "priority" });
+    const harness = setupExtension(undefined, { "service-tier": "fast" });
+    const originalWarn = console.warn;
+    const warnings: unknown[] = [];
+    console.warn = (message: unknown) => { warnings.push(message); };
+    try {
+      assert.deepEqual(await request(harness), { model: codexModel?.id });
+      await request(harness);
+      await toggle(harness);
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.deepEqual(warnings, [
+      'pi-service-tier: --service-tier: expected off or provider:tier pairs, got "fast"',
+    ]);
+    assert.equal(harness.notifications.at(-1)?.type, "error");
+    assert.match(harness.notifications.at(-1)?.message ?? "", /Invalid service tier flag/);
+    assert.equal(harness.sessionManager.getEntries().length, 0);
+  }));
+
+test("Pi CLI parsing and /reload retain --service-tier under session overrides", async () =>
+  withAgentDir(async (dir) => {
+    writeServiceTierConfigSnapshot({
+      openai: "priority",
+      "openai-codex": "priority",
+      anthropic: "priority",
+    });
+
+    const parsed = parseArgs(["--service-tier=openai-codex:flex,anthropic:standard"]);
+    assert.deepEqual(parsed.diagnostics, []);
+
+    const services = await createAgentSessionServices({
+      cwd: dir,
+      agentDir: dir,
+      extensionFlagValues: parsed.unknownFlags,
+      resourceLoaderOptions: {
+        noExtensions: true,
+        noSkills: true,
+        noPromptTemplates: true,
+        noThemes: true,
+        extensionFactories: [serviceTierExtension],
+      },
+    });
+    assert.deepEqual(services.diagnostics, []);
+
+    const { session } = await createAgentSessionFromServices({
+      services,
+      sessionManager: SessionManager.inMemory(),
+      model: codexModel,
+    });
+    try {
+      await session.bindExtensions({
+        onError: (err) => {
+          throw err.error;
+        },
+      });
+      const runner = session.extensionRunner!;
+
+      assert.deepEqual(
+        await runner.emitBeforeProviderRequest({ model: codexModel!.id }),
+        { model: codexModel!.id, service_tier: "flex" },
+      );
+
+      // Session /fast overrides the flag for openai-codex.
+      await runner.getCommand("fast")!.handler("", runner.createCommandContext());
+      assert.deepEqual(
+        await runner.emitBeforeProviderRequest({ model: codexModel!.id }),
+        { model: codexModel!.id, service_tier: "priority" },
+      );
+
+      // Reloading keeps both the parsed CLI flag and session-override precedence.
+      await session.reload();
+      const reloadedRunner = session.extensionRunner!;
+
+      assert.deepEqual(
+        await reloadedRunner.emitBeforeProviderRequest({ model: codexModel!.id }),
+        { model: codexModel!.id, service_tier: "priority" },
+      );
+
+      session.agent.state.model = anthropicModel!;
+      assert.deepEqual(
+        await reloadedRunner.emitBeforeProviderRequest({ model: anthropicModel!.id }),
+        { model: anthropicModel!.id, service_tier: "standard_only" },
+      );
+
+      const openaiModel = {
+        provider: "openai",
+        api: "openai-responses",
+        id: "gpt-5.4",
+      } as NonNullable<ExtensionContext["model"]>;
+      session.agent.state.model = openaiModel;
+      assert.deepEqual(
+        await reloadedRunner.emitBeforeProviderRequest({ model: openaiModel.id }),
+        { model: openaiModel.id },
+      );
+    } finally {
+      session.dispose();
+    }
   }));
