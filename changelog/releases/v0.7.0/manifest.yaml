@@ -1,0 +1,10 @@
+created: 2026-11-22
+title: Per-process service tier defaults and additional account support
+intro: >-
+  Configure per-process service tier defaults with the --service-tier flag without
+  modifying your global configuration file. Additional provider accounts on official
+  endpoints now share their provider's service tier settings across session toggles,
+  child agents, and the footer widget.
+source:
+  mode: sync-stable-queue
+  previous_stable: v0.6.0
