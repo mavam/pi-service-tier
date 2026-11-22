@@ -21,26 +21,28 @@ pi install npm:pi-service-tier
 
 ## 🚀 Commands
 
-- `/fast`: toggles the current model provider between its fast tier and off
+- `/fast`: toggles the current model's provider between its fast tier and off
   **in this session**, without changing other sessions or your global defaults.
   The supported providers all use `priority` as the fast tier.
 
 - `/ultrafast`: toggles between `ultrafast` and off **in this session** for
-  `openai` and `openai-codex`. It uses the same provider override as `/fast`, so
-  selecting a different speed replaces the active tier.
+  `openai` and `openai-codex` (including additional accounts on their official
+  endpoints). It uses the same provider override as `/fast`, so selecting a
+  different speed replaces the active tier.
 
 - `/service-tier`: opens an interactive editor for **global defaults**. The
-  current model provider appears first, followed by the remaining supported
+  current model's provider appears first, followed by the remaining supported
   providers. Press Enter or Space to cycle through `off` and the provider-specific
   tiers. Session overrides take precedence over these defaults.
 
 ### Session scope
 
 To speed up a session, run `/fast` or `/ultrafast`. Run the same command again to
-turn that mode off. Each provider has its own override, so switching models
-preserves your choices. Turning either mode off disables this extension's tier
-injection, even if a global tier is configured. The command leaves other request
-parameters unchanged.
+turn that mode off. Each supported provider has one override (shared with any
+additional accounts for that provider), so switching models preserves your
+choices. Turning either mode off disables this extension's tier injection, even
+if a global tier is configured. The command leaves other request parameters
+unchanged.
 
 | Current tier  | `/fast`    | `/ultrafast` |
 | ------------- | ---------- | ------------ |
@@ -48,8 +50,8 @@ parameters unchanged.
 | `priority`    | Off        | `ultrafast`  |
 | `ultrafast`   | `priority` | Off          |
 
-Both commands remain listed on all providers. An unsupported provider/API pair
-produces a warning without changing settings.
+Both commands remain listed on all providers. Running them on an unsupported
+model produces a warning without changing settings.
 
 Overrides are saved with the session and restored on resume or extension reload.
 They follow the active conversation branch: `/tree` restores the choices at the
@@ -76,7 +78,8 @@ With [pi-agents](https://github.com/mavam/pi-agents) 0.36.0 or later, which
 provides [agent extension hooks](https://github.com/mavam/pi-agents/blob/main/docs/hooks.md),
 new agents capture your effective service-tier settings, including session
 `/fast` and `/ultrafast` overrides. Each child applies the settings for its own
-provider/API pair, even when it uses a different model from the parent.
+provider, even when it uses a different model or additional account from the
+parent.
 
 For example, enable `/fast`, then ask Pi to spawn an agent. That agent keeps
 its captured settings if you toggle `/fast` again. Graph nodes capture when
@@ -117,10 +120,25 @@ accepted. Providers without a session override continue to pick up global change
 Batch APIs are separate asynchronous APIs and are not configured by this
 extension.
 
+### Additional accounts
+
+Accounts registered under another provider name, such as
+[pi-multi-pass](https://github.com/hjanuschka/pi-multi-pass)'s `anthropic-2` or
+`openai-codex-2`, share the service-tier settings of the built-in provider whose
+API and official endpoint they use. `/fast`, `/ultrafast`, `/service-tier`,
+child agents, and the footer widget all share that provider's setting rather
+than storing a separate entry per account.
+
+Account matching requires the exact API and `baseUrl` of Pi's built-in provider
+(for example `https://api.anthropic.com` with no trailing slash or port, or
+`https://{location}-aiplatform.googleapis.com` for `google-vertex`). Other
+spellings and third-party proxies speaking a supported API are not matched and
+receive no service tier.
+
 ## 🧩 Footer widget
 
 When [pi-fancy-footer](https://github.com/mavam/pi-fancy-footer) is installed,
-the widget appears only when the active model uses a supported provider/API pair
+the widget appears only when the active model resolves to a supported provider
 and that provider has an effective tier after applying session overrides. It shows
 `⚡⚡` for ultrafast or a single `⚡` for another active tier, without the tier
 name. The bolts indicate the requested tier; they do not confirm which tier the

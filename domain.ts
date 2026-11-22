@@ -25,6 +25,7 @@ export type ServiceTierSettings = Readonly<
 export interface ServiceTierModel {
   readonly provider?: unknown;
   readonly api?: unknown;
+  readonly baseUrl?: unknown;
   readonly id?: unknown;
   readonly name?: unknown;
 }
@@ -39,6 +40,8 @@ export const DEFAULT_SERVICE_TIER_CONFIG: ServiceTierConfigSnapshot = {};
 export interface ServiceTierProviderDefinition {
   label: string;
   api: string;
+  /** Exact built-in endpoint; matched literally with `api` for account aliases. */
+  baseUrl: string;
   tiers: readonly ServiceTier[];
   fastTier?: ServiceTierName;
   ultrafastTier?: ServiceTierName;
@@ -55,6 +58,7 @@ export const SERVICE_TIER_PROVIDER_DEFINITIONS: Record<
   openai: {
     label: "OpenAI",
     api: "openai-responses",
+    baseUrl: "https://api.openai.com/v1",
     tiers: [tier("flex"), tier("priority"), tier("ultrafast")],
     fastTier: "priority",
     ultrafastTier: "ultrafast",
@@ -62,6 +66,7 @@ export const SERVICE_TIER_PROVIDER_DEFINITIONS: Record<
   "openai-codex": {
     label: "OpenAI Codex",
     api: "openai-codex-responses",
+    baseUrl: "https://chatgpt.com/backend-api",
     tiers: [tier("flex"), tier("priority"), tier("ultrafast")],
     fastTier: "priority",
     ultrafastTier: "ultrafast",
@@ -69,18 +74,21 @@ export const SERVICE_TIER_PROVIDER_DEFINITIONS: Record<
   anthropic: {
     label: "Anthropic",
     api: "anthropic-messages",
+    baseUrl: "https://api.anthropic.com",
     tiers: [tier("priority", "auto"), tier("standard", "standard_only")],
     fastTier: "priority",
   },
   google: {
     label: "Google Gemini",
     api: "google-generative-ai",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     tiers: [tier("flex"), tier("priority")],
     fastTier: "priority",
   },
   "google-vertex": {
     label: "Google Vertex AI",
     api: "google-vertex",
+    baseUrl: "https://{location}-aiplatform.googleapis.com",
     tiers: [tier("flex"), tier("priority")],
     fastTier: "priority",
   },
@@ -117,9 +125,19 @@ export function modelSupportsServiceTier(
 export function getServiceTierProviderForModel(
   model: ServiceTierModel | undefined,
 ): ServiceTierProvider | undefined {
-  if (!model || !isServiceTierProvider(model.provider)) return undefined;
-  const definition = SERVICE_TIER_PROVIDER_DEFINITIONS[model.provider];
-  return model.api === definition.api ? model.provider : undefined;
+  if (!model) return undefined;
+  if (isServiceTierProvider(model.provider)) {
+    const definition = SERVICE_TIER_PROVIDER_DEFINITIONS[model.provider];
+    return model.api === definition.api ? model.provider : undefined;
+  }
+  // Match additional accounts (e.g. `anthropic-2`) by exact API and built-in endpoint.
+  return SERVICE_TIER_PROVIDERS.find((provider) => {
+    const definition = SERVICE_TIER_PROVIDER_DEFINITIONS[provider];
+    return (
+      model.api === definition.api &&
+      model.baseUrl === definition.baseUrl
+    );
+  });
 }
 
 export function getConfiguredServiceTier(
