@@ -4,6 +4,7 @@ import {
   isRecord,
   isServiceTierName,
   isServiceTierProvider,
+  type ServiceTierConfigSnapshot,
   type ServiceTierModel,
   type ServiceTierProvider,
   type ServiceTierSelection,
@@ -15,7 +16,7 @@ import {
 } from "./session-state.ts";
 
 /** Structural implementation of pi-agents/hooks protocol 1; no dependency. */
-export function createAgentHooks(loadDefaults: () => ServiceTierSettings) {
+export function createAgentHooks(loadDefaults: () => ServiceTierConfigSnapshot) {
   return {
     namespace: "pi-service-tier",
     onAgentCreate(ctx: { parent: { branch: readonly SessionEntry[] } }) {
@@ -62,7 +63,7 @@ function readSettings(state: unknown): ServiceTierSettings {
 
 export function registerAgentHooks(
   events: ExtensionAPI["events"],
-  loadDefaults: () => ServiceTierSettings,
+  loadDefaults: () => ServiceTierConfigSnapshot,
 ): void {
   const hooks = createAgentHooks(loadDefaults);
   events.on("pi-agents:hooks:discover", (request) => {
