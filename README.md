@@ -55,7 +55,8 @@ Overrides are saved with the session and restored on resume or extension reload.
 They follow the active conversation branch: `/tree` restores the choices at the
 selected point, and `/fork` or `/clone` inherits the choices on the copied branch.
 Later toggles in a fork do not affect its parent. `/new` starts without overrides
-and uses your global defaults.
+and uses your global defaults, under any `--service-tier` flag the process was
+started with.
 
 ### Ultrafast availability
 
@@ -129,7 +130,8 @@ pi-agents capture these defaults too. An invalid value is reported and ignored.
 | `google-vertex` | `flex`, `priority`              | `priority` |
 
 To turn a provider off by default, omit its key. Only the values listed above are
-accepted. Providers without a session override continue to pick up global changes.
+accepted. Providers without a session override continue to pick up global changes, unless
+the process's `--service-tier` flag sets them.
 Batch APIs are separate asynchronous APIs and are not configured by this
 extension.
 
