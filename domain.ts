@@ -92,6 +92,7 @@ export const SERVICE_TIER_PROVIDER_DEFINITIONS: Record<
   "google-vertex": {
     label: "Google Vertex AI",
     api: "google-vertex",
+    baseUrl: "https://{location}-aiplatform.googleapis.com",
     tiers: [tier("flex"), tier("priority")],
     fastTier: "priority",
   },
