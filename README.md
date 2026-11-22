@@ -102,6 +102,22 @@ Run `/service-tier` or create `~/.pi/agent/service-tier.json` to set global defa
 }
 ```
 
+### Per-process defaults
+
+`--service-tier` sets defaults for one Pi process on top of the global file,
+for example for a scripted run or a subagent launcher:
+
+```sh
+pi --service-tier=off
+pi --service-tier=openai-codex:priority,anthropic:off
+```
+
+`off` disables every provider; otherwise list `provider:tier` pairs, where
+`off` disables one provider. Session `/fast` and `/ultrafast` overrides still
+take precedence and are saved without the flag's values, so reopening the
+session without the flag uses the global file again. Agents created with
+pi-agents capture these defaults too. An invalid value is reported and ignored.
+
 ### Supported providers
 
 | Provider        | Tiers                           | Fast tier  |

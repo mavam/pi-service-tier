@@ -12,6 +12,10 @@ import {
   type ServiceTierConfigSnapshot,
   type ServiceTierName,
   type ServiceTierProvider,
+  type ServiceTierSelection,
+  type ServiceTierSettings,
+  isServiceTierName,
+  isServiceTierProvider,
 } from "./domain.ts";
 
 export const SERVICE_TIER_CONFIG_FILE = "service-tier.json";
@@ -108,4 +112,29 @@ export function writeServiceTierConfigSnapshot(
 ): void {
   mkdirSync(dirname(configPath), { recursive: true });
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+}
+
+/**
+ * Parse `--service-tier`: `off` disables every provider; otherwise a
+ * comma-separated list of `provider:tier` pairs, where `off` disables one.
+ */
+export function parseServiceTierFlag(value: string): ServiceTierSettings {
+  if (value.trim() === "off") {
+    return Object.fromEntries(SERVICE_TIER_PROVIDERS.map((provider) => [provider, ""]));
+  }
+  const settings: Partial<Record<ServiceTierProvider, ServiceTierSelection>> = {};
+  for (const item of value.split(",")) {
+    const [provider, serviceTier, ...rest] = item.trim().split(":");
+    if (rest.length > 0 || !isServiceTierProvider(provider)) {
+      throw new Error(`--service-tier: expected off or provider:tier pairs, got "${item.trim()}"`);
+    }
+    if (provider in settings) {
+      throw new Error(`--service-tier: ${provider} is set more than once`);
+    }
+    if (serviceTier !== "off" && !isServiceTierName(provider, serviceTier)) {
+      throw new Error(`--service-tier: ${provider} has no service tier "${serviceTier}"`);
+    }
+    settings[provider] = serviceTier === "off" ? "" : serviceTier;
+  }
+  return settings;
 }

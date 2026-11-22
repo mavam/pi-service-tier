@@ -3,7 +3,6 @@ import {
   SERVICE_TIER_PROVIDER_DEFINITIONS,
   isRecord,
   isServiceTierProvider,
-  type ServiceTierConfigSnapshot,
   type ServiceTierSettings,
 } from "./domain.ts";
 
@@ -18,7 +17,7 @@ export interface ServiceTierSessionState {
 }
 
 export function mergeServiceTierSettings(
-  defaults: ServiceTierConfigSnapshot,
+  defaults: ServiceTierSettings,
   overrides: SessionServiceTierOverrides,
 ): ServiceTierSettings {
   return { ...defaults, ...overrides };

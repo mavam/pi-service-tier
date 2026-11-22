@@ -35,6 +35,7 @@ import {
   getServiceTierConfigPath,
   loadServiceTierConfig,
   parseServiceTierConfigValue,
+  parseServiceTierFlag,
   writeServiceTierConfigSnapshot,
 } from "./config.ts";
 import { createServiceTierSections } from "./settings.ts";
@@ -59,7 +60,10 @@ async function withAgentDir<T>(
   }
 }
 
-function setupExtension(sessionManager = SessionManager.inMemory()): {
+function setupExtension(
+  sessionManager = SessionManager.inMemory(),
+  flags: Record<string, string> = {},
+): {
   sessionManager: SessionManager;
   commands: Map<string, RegisteredCommand>;
   emitExtensionEvent: (event: string, payload: unknown) => void;
@@ -80,6 +84,10 @@ function setupExtension(sessionManager = SessionManager.inMemory()): {
     },
     registerCommand(name: string, options: RegisteredCommand) {
       commands.set(name, options);
+    },
+    registerFlag() {},
+    getFlag(name: string) {
+      return flags[name];
     },
     on(event: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) {
       const entries = handlers.get(event) ?? [];
@@ -924,4 +932,74 @@ test("/service-tier edits global defaults without overwriting session overrides"
     assert.equal(footerText(harness), "⚡");
     assert.deepEqual(await request(setupExtension()), { model: codexModel?.id, service_tier: "flex" });
     assert.equal(harness.sessionManager.getEntries().length, 1);
+  }));
+
+test("parseServiceTierFlag accepts off and provider:tier pairs", () => {
+  assert.deepEqual(parseServiceTierFlag("off"), {
+    openai: "", "openai-codex": "", anthropic: "", google: "", "google-vertex": "",
+  });
+  assert.deepEqual(parseServiceTierFlag("openai-codex:priority, anthropic:off"), {
+    "openai-codex": "priority", anthropic: "",
+  });
+  for (const value of ["", "fast", "openai-codex", "openai-codex:standard", "nope:priority",
+    "openai:flex,openai:priority", "openai:flex:x"]) {
+    assert.throws(() => parseServiceTierFlag(value), /--service-tier/, value);
+  }
+});
+
+test("--service-tier layers over global defaults and under session overrides", async () =>
+  withAgentDir(async () => {
+    writeServiceTierConfigSnapshot({ "openai-codex": "priority", anthropic: "priority" });
+    const harness = setupExtension(undefined, { "service-tier": "off" });
+    await harness.emitPiEvent("session_start", {}, harness.context(codexModel));
+    assert.deepEqual(await request(harness), { model: codexModel?.id });
+    assert.equal(footerText(harness), "");
+
+    await toggle(harness, anthropicModel);
+    assert.deepEqual(await request(harness, anthropicModel), {
+      model: anthropicModel?.id, service_tier: "auto",
+    });
+    assert.deepEqual(await request(harness), { model: codexModel?.id });
+    // Only the session choice is saved; the flag's "off" for Codex is not.
+    assert.deepEqual(
+      harness.sessionManager.getEntries().map((entry) => entry.type === "custom" && entry.data),
+      [{ version: 1, overrides: { anthropic: "priority" } }],
+    );
+    const reopened = setupExtension(harness.sessionManager);
+    await reopened.emitPiEvent("session_start", {}, reopened.context(codexModel));
+    assert.deepEqual(await request(reopened), { model: codexModel?.id, service_tier: "priority" });
+  }));
+
+test("child hooks capture --service-tier defaults", async () =>
+  withAgentDir(async () => {
+    writeServiceTierConfigSnapshot({ "openai-codex": "priority" });
+    const parent = SessionManager.inMemory();
+    const harness = setupExtension(parent, { "service-tier": "openai-codex:off,anthropic:priority" });
+    let hooks: ReturnType<typeof createAgentHooks> | undefined;
+    harness.emitExtensionEvent("pi-agents:hooks:discover", {
+      protocol: 1,
+      register(value: ReturnType<typeof createAgentHooks>) { hooks = value; },
+    });
+    assert.ok(hooks);
+    const state = hooks.onAgentCreate({ parent: { branch: parent.getBranch() } });
+    assert.equal(hooks.onAgentRequest({ state, model: codexModel! }, {}), undefined);
+    assert.deepEqual(hooks.onAgentRequest({ state, model: anthropicModel! }, {}), { service_tier: "auto" });
+  }));
+
+test("an invalid --service-tier warns and applies no defaults", async () =>
+  withAgentDir(async () => {
+    writeServiceTierConfigSnapshot({ "openai-codex": "priority" });
+    const harness = setupExtension(undefined, { "service-tier": "fast" });
+    const originalWarn = console.warn;
+    const warnings: unknown[] = [];
+    console.warn = (message: unknown) => { warnings.push(message); };
+    try {
+      assert.deepEqual(await request(harness), { model: codexModel?.id, service_tier: "priority" });
+      await request(harness);
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.deepEqual(warnings, [
+      'pi-service-tier: --service-tier: expected off or provider:tier pairs, got "fast"',
+    ]);
   }));
