@@ -335,6 +335,15 @@ test("account aliases on a provider's official endpoint share its service tier",
     }),
     "priority",
   );
+  // Only the exact built-in spelling counts; anything else safely gets no tier.
+  assert.equal(
+    resolveEffectiveServiceTier(config, {
+      provider: "anthropic-2",
+      api: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com/",
+    }),
+    "",
+  );
   // Third-party endpoints speaking the same API are not aliases.
   assert.equal(
     resolveEffectiveServiceTier(config, {

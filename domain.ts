@@ -40,7 +40,11 @@ export const DEFAULT_SERVICE_TIER_CONFIG: ServiceTierConfigSnapshot = {};
 export interface ServiceTierProviderDefinition {
   label: string;
   api: string;
-  /** Official endpoint; another provider using it with `api` is an account alias. */
+  /**
+   * Official endpoint, exactly as Pi's built-in provider spells it; another
+   * provider using this exact string with `api` is an account alias. Other
+   * spellings are not matched: a missed alias only sends no tier.
+   */
   baseUrl?: string;
   tiers: readonly ServiceTier[];
   fastTier?: ServiceTierName;

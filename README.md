@@ -114,8 +114,10 @@ Run `/service-tier` or create `~/.pi/agent/service-tier.json` to set global defa
 
 Additional accounts registered under another provider name, such as
 [pi-multi-pass](https://github.com/hjanuschka/pi-multi-pass)'s `anthropic-2`,
-share the tier of the provider whose API and official endpoint they use. Other
-endpoints that speak a supported API, such as proxies, are not affected.
+share the tier of the provider whose API and official endpoint they use. The
+account's base URL must be spelled exactly like the built-in provider's (for
+example `https://api.anthropic.com`, no trailing slash or port); any other
+spelling, and any proxy that speaks a supported API, gets no service tier.
 
 To turn a provider off by default, omit its key. Only the values listed above are
 accepted. Providers without a session override continue to pick up global changes.
