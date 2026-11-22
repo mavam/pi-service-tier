@@ -14,6 +14,7 @@ import {
   DEFAULT_SERVICE_TIER_CONFIG,
   SERVICE_TIER_PROVIDER_DEFINITIONS,
   applyServiceTierToPayload,
+  getServiceTierProviderForModel,
   isServiceTierProvider,
   resolveEffectiveServiceTier,
   setProviderServiceTier,
@@ -220,7 +221,12 @@ export default function (pi: ExtensionAPI) {
     pi.registerCommand(speed, {
       description: `Toggle ${speed} service tier for the current provider in this session.`,
       handler: async (_args, ctx) => {
-        const config = loadConfigForCommand(ctx);
+        // A flag value for this provider is the default requests use even when
+        // the global file is malformed, so toggle from that same fallback.
+        const provider = getServiceTierProviderForModel(ctx.model);
+        const config = provider && Object.hasOwn(loadFlagSettings(), provider)
+          ? loadConfigOrDefault()
+          : loadConfigForCommand(ctx);
         if (!config) return;
 
         const result = toggleServiceTierSpeed(effectiveSettings(config), ctx.model, speed);

@@ -986,6 +986,30 @@ test("child hooks capture --service-tier defaults", async () =>
     assert.deepEqual(hooks.onAgentRequest({ state, model: anthropicModel! }, {}), { service_tier: "auto" });
   }));
 
+test("session toggles override the flag when the global file is malformed", async () =>
+  withAgentDir(async (dir) => {
+    const configPath = join(dir, SERVICE_TIER_CONFIG_FILE);
+    writeFileSync(configPath, "{");
+    const harness = setupExtension(undefined, { "service-tier": "openai-codex:priority" });
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      assert.deepEqual(await request(harness), { model: codexModel?.id, service_tier: "priority" });
+      await toggle(harness);
+      assert.deepEqual(await request(harness), { model: codexModel?.id });
+      // Without a flag value for the provider, the malformed file still blocks it.
+      await toggle(harness, anthropicModel);
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.equal(harness.notifications.at(-1)?.type, "error");
+    assert.deepEqual(
+      harness.sessionManager.getEntries().map((entry) => entry.type === "custom" && entry.data),
+      [{ version: 1, overrides: { "openai-codex": "" } }],
+    );
+    assert.equal(readFileSync(configPath, "utf8"), "{");
+  }));
+
 test("an invalid --service-tier warns and applies no defaults", async () =>
   withAgentDir(async () => {
     writeServiceTierConfigSnapshot({ "openai-codex": "priority" });
