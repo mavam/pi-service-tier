@@ -40,12 +40,8 @@ export const DEFAULT_SERVICE_TIER_CONFIG: ServiceTierConfigSnapshot = {};
 export interface ServiceTierProviderDefinition {
   label: string;
   api: string;
-  /**
-   * Official endpoint, exactly as Pi's built-in provider spells it; another
-   * provider using this exact string with `api` is an account alias. Other
-   * spellings are not matched: a missed alias only sends no tier.
-   */
-  baseUrl?: string;
+  /** Exact built-in endpoint; matched literally with `api` for account aliases. */
+  baseUrl: string;
   tiers: readonly ServiceTier[];
   fastTier?: ServiceTierName;
   ultrafastTier?: ServiceTierName;
@@ -134,12 +130,10 @@ export function getServiceTierProviderForModel(
     const definition = SERVICE_TIER_PROVIDER_DEFINITIONS[model.provider];
     return model.api === definition.api ? model.provider : undefined;
   }
-  // Additional accounts (for example pi-multi-pass's `anthropic-2`) register
-  // under another name but reuse the provider's API and official endpoint.
+  // Match additional accounts (e.g. `anthropic-2`) by exact API and built-in endpoint.
   return SERVICE_TIER_PROVIDERS.find((provider) => {
     const definition = SERVICE_TIER_PROVIDER_DEFINITIONS[provider];
     return (
-      definition.baseUrl !== undefined &&
       model.api === definition.api &&
       model.baseUrl === definition.baseUrl
     );

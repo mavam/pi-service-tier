@@ -30,6 +30,10 @@ for (const serviceTier of ["flex", "ultrafast"] as const) {
     assert.deepEqual(resumed.onAgentRequest({ state: JSON.parse(JSON.stringify(state)), model: anthropic }, {}), { service_tier: "auto" });
     assert.equal(resumed.onAgentRequest({ state, model: codex }, {}), undefined);
     assert.deepEqual(resumed.onAgentRequest({ state: JSON.parse(JSON.stringify(next)), model: codex }, {}), { service_tier: serviceTier });
+    assert.deepEqual(
+      resumed.onAgentRequest({ state, model: { provider: "anthropic-2", api: "anthropic-messages", baseUrl: "https://api.anthropic.com" } }, {}),
+      { service_tier: "auto" },
+    );
     assert.equal(resumed.onAgentRequest({ state, model: { provider: "other", api: "anthropic-messages" } }, {}), undefined);
   });
 }
