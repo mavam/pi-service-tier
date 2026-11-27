@@ -1,0 +1,8 @@
+created: 2026-11-27
+title: Fix Google Vertex AI service tiers
+intro: >-
+  Send Vertex AI service tiers through the request header that the service supports.
+  Keep Gemini Developer API tiers in the request body.
+source:
+  mode: sync-stable-queue
+  previous_stable: v0.7.0
