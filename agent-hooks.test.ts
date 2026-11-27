@@ -7,10 +7,15 @@ import { SERVICE_TIER_SESSION_ENTRY } from "./session-state.ts";
 
 const codex = { provider: "openai-codex", api: "openai-codex-responses" };
 const anthropic = { provider: "anthropic", api: "anthropic-messages" };
+const vertex = { provider: "google-vertex", api: "google-vertex" };
 
 for (const serviceTier of ["flex", "ultrafast"] as const) {
   test(`agent snapshots with ${serviceTier} use the supplied branch and stay fixed across changes`, () => {
-    let defaults: ServiceTierConfigSnapshot = { "openai-codex": "priority", anthropic: "priority" };
+    let defaults: ServiceTierConfigSnapshot = {
+      "openai-codex": "priority",
+      anthropic: "priority",
+      "google-vertex": "priority",
+    };
     const hooks = createAgentHooks(() => defaults);
     const parent = SessionManager.inMemory();
     parent.appendCustomEntry(SERVICE_TIER_SESSION_ENTRY, {
@@ -19,6 +24,9 @@ for (const serviceTier of ["flex", "ultrafast"] as const) {
     const state = hooks.onAgentCreate({ parent: { branch: parent.getBranch() } });
     assert.equal(hooks.onAgentRequest({ state, model: codex }, {}), undefined);
     assert.deepEqual(hooks.onAgentRequest({ state, model: anthropic }, {}), { service_tier: "auto" });
+    assert.deepEqual(hooks.onAgentRequest({ state, model: vertex }, {}), {
+      config: { httpOptions: { headers: { "X-Vertex-AI-LLM-Shared-Request-Type": "priority" } } },
+    });
     parent.appendCustomEntry(SERVICE_TIER_SESSION_ENTRY, {
       version: 1, overrides: { "openai-codex": serviceTier },
     });
