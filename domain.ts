@@ -163,17 +163,51 @@ function getTier(
   );
 }
 
+const VERTEX_SHARED_REQUEST_TYPE_HEADER = "X-Vertex-AI-LLM-Shared-Request-Type";
+
+function setHeader(
+  headers: Record<string, unknown>,
+  name: string,
+  value: string,
+): Record<string, unknown> {
+  const target = name.toLowerCase();
+  const next: Record<string, unknown> = {};
+  for (const [key, entryValue] of Object.entries(headers)) {
+    if (key.toLowerCase() !== target) next[key] = entryValue;
+  }
+  next[name] = value;
+  return next;
+}
+
 function applyPayloadServiceTier(
   payload: Record<string, unknown>,
   provider: ServiceTierProvider,
   value: string,
 ): Record<string, unknown> {
-  if (provider === "google" || provider === "google-vertex") {
+  if (provider === "google") {
     return {
       ...payload,
       config: {
         ...(isRecord(payload.config) ? payload.config : {}),
         serviceTier: value,
+      },
+    };
+  }
+
+  if (provider === "google-vertex") {
+    // Vertex AI rejects or ignores body `serviceTier`; it selects PayGo tiers via HTTP header.
+    const config = isRecord(payload.config) ? payload.config : {};
+    const { serviceTier: _removed, ...restConfig } = config;
+    const httpOptions = isRecord(config.httpOptions) ? config.httpOptions : {};
+    const headers = isRecord(httpOptions.headers) ? httpOptions.headers : {};
+    return {
+      ...payload,
+      config: {
+        ...restConfig,
+        httpOptions: {
+          ...httpOptions,
+          headers: setHeader(headers, VERTEX_SHARED_REQUEST_TYPE_HEADER, value),
+        },
       },
     };
   }

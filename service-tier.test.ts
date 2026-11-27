@@ -10,6 +10,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { stream as streamGoogle } from "@earendil-works/pi-ai/api/google-generative-ai";
+import { stream as streamVertex } from "@earendil-works/pi-ai/api/google-vertex";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
@@ -448,9 +450,52 @@ test("applyServiceTierToPayload injects provider-specific service tier values", 
     ),
     {
       model: "gemini-3-pro",
-      config: { serviceTier: "flex" },
+      config: {
+        httpOptions: {
+          headers: { "X-Vertex-AI-LLM-Shared-Request-Type": "flex" },
+        },
+      },
     },
   );
+  const vertexPayload = {
+    model: "gemini-4-neon",
+    config: {
+      temperature: 0.2,
+      serviceTier: "flex",
+      httpOptions: {
+        timeout: 60_000,
+        headers: {
+          "X-Custom": "1",
+          "x-vertex-ai-llm-shared-request-type": "flex",
+        },
+      },
+    },
+  };
+  assert.deepEqual(
+    applyServiceTierToPayload(
+      vertexPayload,
+      { "google-vertex": "priority" },
+      { provider: "google-vertex", api: "google-vertex" },
+    ),
+    {
+      model: "gemini-4-neon",
+      config: {
+        temperature: 0.2,
+        httpOptions: {
+          timeout: 60_000,
+          headers: {
+            "X-Custom": "1",
+            "X-Vertex-AI-LLM-Shared-Request-Type": "priority",
+          },
+        },
+      },
+    },
+  );
+  assert.deepEqual(vertexPayload.config.httpOptions.headers, {
+    "X-Custom": "1",
+    "x-vertex-ai-llm-shared-request-type": "flex",
+  });
+  assert.equal(vertexPayload.config.serviceTier, "flex");
   assert.equal(
     applyServiceTierToPayload(
       { model: "gpt-5.5" },
@@ -1216,3 +1261,93 @@ test("Pi CLI parsing and /reload retain --service-tier under session overrides",
       session.dispose();
     }
   }));
+
+test("Google Vertex sends tier header without body serviceTier while Google Gemini sends body serviceTier", async () => {
+  const originalFetch = globalThis.fetch;
+  const captureWireRequest = async (
+    runStream: (onPayload: (params: unknown, model: unknown) => unknown) => AsyncIterable<unknown>,
+  ) => {
+    let captured:
+      | { url: string; headers: Record<string, string>; body: Record<string, unknown> }
+      | undefined;
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      captured = {
+        url: String(url),
+        headers: Object.fromEntries(new Headers(init?.headers).entries()),
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      };
+      throw new Error("stop-after-capture");
+    }) as typeof globalThis.fetch;
+    try {
+      for await (const _ of runStream((payload, model) =>
+        applyServiceTierToPayload(
+          payload,
+          { "google-vertex": "priority", google: "flex" },
+          model as Parameters<typeof applyServiceTierToPayload>[2],
+        ),
+      )) {
+        // Consume stream until the mock fetch aborts it.
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    assert.ok(captured, "Expected request to reach fetch");
+    return captured;
+  };
+
+  const vertexModel = {
+    id: "gemini-4-neon",
+    name: "Gemini 4 Neon",
+    api: "google-vertex",
+    provider: "google-vertex",
+    baseUrl: "https://{location}-aiplatform.googleapis.com",
+    reasoning: true,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 100_000,
+    maxTokens: 1000,
+    headers: { "X-Custom-Model": "keep-me" },
+  } as Parameters<typeof streamVertex>[0];
+
+  const vertexWire = await captureWireRequest((onPayload) =>
+    streamVertex(
+      vertexModel,
+      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+      {
+        apiKey: "test-vertex-key",
+        headers: { "X-Custom-Option": "keep-me-too" },
+        onPayload: (payload, model) => onPayload(payload, model),
+      },
+    ),
+  );
+  assert.equal(vertexWire.headers["x-vertex-ai-llm-shared-request-type"], "priority");
+  assert.equal(vertexWire.headers["x-custom-model"], "keep-me");
+  assert.equal(vertexWire.headers["x-custom-option"], "keep-me-too");
+  assert.equal("serviceTier" in vertexWire.body, false);
+
+  const googleModel = {
+    id: "gemini-4-neon",
+    name: "Gemini 4 Neon",
+    api: "google-generative-ai",
+    provider: "google",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    reasoning: true,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 100_000,
+    maxTokens: 1000,
+  } as Parameters<typeof streamGoogle>[0];
+
+  const googleWire = await captureWireRequest((onPayload) =>
+    streamGoogle(
+      googleModel,
+      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+      {
+        apiKey: "test-google-key",
+        onPayload: (payload, model) => onPayload(payload, model),
+      },
+    ),
+  );
+  assert.equal(googleWire.body.serviceTier, "flex");
+  assert.equal("x-vertex-ai-llm-shared-request-type" in googleWire.headers, false);
+});
